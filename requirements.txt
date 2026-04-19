@@ -1,0 +1,23 @@
+# Core
+boto3>=1.35
+pydantic>=2.7
+python-dotenv>=1.0
+
+# Task 2 — agent framework
+strands-agents>=0.1
+
+# Data
+pandas>=2.2
+pyarrow>=16.0
+
+# Notebook + plotting (primary deliverable)
+jupyter>=1.0
+notebook>=7.0
+matplotlib>=3.8
+seaborn>=0.13
+
+# CLI
+typer>=0.12
+
+# Tests
+pytest>=8.0

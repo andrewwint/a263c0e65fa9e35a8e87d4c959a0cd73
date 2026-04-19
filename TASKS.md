@@ -6,16 +6,18 @@ Execution checklist. Grouped by phase; check off as completed. Keep in sync with
 
 ## Phase 0 — Setup
 
-- [ ] Create `.gitignore` (`.env`, `__pycache__`, `*.pyc`, `data/*.parquet`, `db/*.db`, `.DS_Store`, `*.zip`)
-- [ ] Create `.env.example` with `AWS_PROFILE=` and `AWS_REGION=us-east-1` (no API keys — boto3 handles auth)
-- [ ] Create `requirements.txt` (`boto3`, `strands-agents`, `pydantic`, `pandas`, `pyarrow`, `python-dotenv`, `typer`, `pytest`)
-- [ ] Create `pyproject.toml` (optional, for linting/formatting)
-- [ ] Copy `movies.db` and `ratings.db` into `db/` (gitignored)
-- [ ] Add `jupyter`, `notebook`, `matplotlib`, `seaborn` to `requirements.txt`
-- [ ] Create virtualenv, install deps, verify `python -c "import sqlite3, boto3, pydantic, jupyter, strands"`
-- [ ] Enable Bedrock model access in AWS console for `openai.gpt-oss-20b-1:0`, `openai.gpt-oss-120b-1:0`, `us.anthropic.claude-3-5-haiku-20241022-v1:0`
-- [ ] Smoke-test Bedrock: `boto3.client('bedrock-runtime').invoke_model(...)` with a one-line prompt
-- [ ] Create project `README.md` skeleton (setup, run, design notes, AWS prerequisites)
+- [x] Create `.gitignore` (`.env`, `__pycache__`, `*.pyc`, `data/*.parquet`, `db/*.db`, `.DS_Store`, `*.zip`)
+- [x] Create `.env.example` with `AWS_PROFILE=` and `AWS_REGION=us-east-1` (no API keys — boto3 handles auth)
+- [x] Create `requirements.txt` (`boto3`, `strands-agents`, `pydantic`, `pandas`, `pyarrow`, `python-dotenv`, `typer`, `pytest`)
+- [~] ~~Create `pyproject.toml`~~ — skipped per scope discipline (optional + no functional gain)
+- [x] Copy `movies.db` and `ratings.db` into `db/` (gitignored)
+- [x] Add `jupyter`, `notebook`, `matplotlib`, `seaborn` to `requirements.txt`
+- [x] Create project `README.md` skeleton (setup, run, design notes, AWS prerequisites)
+- [ ] **USER:** Create virtualenv, install deps, verify `python -c "import sqlite3, boto3, pydantic, jupyter, strands"`
+- [ ] **USER:** Enable Bedrock model access in AWS console (**us-east-1**) for:
+  - `openai.gpt-oss-20b-1:0` — Task 1 enrichment
+  - `us.anthropic.claude-haiku-4-5-20251001-v1:0` — Task 2 agent reasoning + Task 1 fallback
+- [x] Smoke-test Bedrock + Strands — `python tests/smoke_bedrock.py` passed all 3 checks (boto3 gpt-oss-20b, boto3 Haiku 4.5, Strands+Haiku 4.5). Confirmed: Haiku 3.5 is legacy-locked (switched to 4.5), gpt-oss-20b emits reasoning blocks (handle with `reasoning_effort="low"` in Phase 2)
 
 ## Phase 1 — Data exploration (in notebook)
 
@@ -29,7 +31,9 @@ Execution checklist. Grouped by phase; check off as completed. Keep in sync with
 
 ### `src/llm.py` — Bedrock wrapper (Lambda-ready, used by Task 1 only)
 
-- [ ] `invoke(prompt, schema, model_id) -> BaseModel`: bedrock-runtime → text → JSON parse → Pydantic validate → retry up to 2× on `ValidationError`
+- [ ] `invoke(prompt, schema, model_id) -> BaseModel`: bedrock-runtime → parse content blocks (skip reasoningContent, extract text) → JSON parse → Pydantic validate → retry up to 2× on `ValidationError`
+- [ ] Pass `additionalModelRequestFields={"reasoning_effort": "low"}` for gpt-oss to minimize reasoning-token burn (smoke test showed 72→41 tokens on a 2-char reply at default effort)
+- [ ] Set `maxTokens` generously (≥1000) to leave reasoning headroom plus answer space
 - [ ] Log input/output token counts per call
 - [ ] Surface clear error if Bedrock model access is not enabled
 - [ ] Unit test the retry path with a mocked client
@@ -40,7 +44,7 @@ Execution checklist. Grouped by phase; check off as completed. Keep in sync with
 - [ ] Draft enrichment prompt in `src/prompts/enrich.py` (system + user template, JSON-only instruction)
 - [ ] Implement `src/enrich.py` functions: `sample_movies(n)`, `enrich_one(movie)`, `enrich_all(movies, cache_path)` — no script-level code
 - [ ] In notebook: dry-run on 3 movies with `gpt-oss-20b`, render the prompt + raw response + parsed JSON inline
-- [ ] In notebook: if JSON failure rate >10%, swap to `us.anthropic.claude-3-5-haiku-20241022-v1:0` with a markdown note explaining the swap
+- [ ] In notebook: if JSON failure rate >10%, swap to `us.anthropic.claude-haiku-4-5-20251001-v1:0` with a markdown note explaining the swap
 - [ ] In notebook: full run on 75 movies, render a sample DataFrame preview, verify cache hit on second run
 - [ ] In notebook: consistency check at `temperature=0` — render the diff cell (should be empty)
 - [ ] In notebook: per-call token log cell + cost summary
@@ -72,7 +76,7 @@ Execution checklist. Grouped by phase; check off as completed. Keep in sync with
 
 ### Agent
 
-- [ ] `src/agent.py`: `Agent(model=BedrockModel("openai.gpt-oss-120b-1:0"), tools=[...], system_prompt=...)`
+- [ ] `src/agent.py`: `Agent(model=BedrockModel(model_id="us.anthropic.claude-haiku-4-5-20251001-v1:0", region_name="us-east-1"), tools=[...], system_prompt=...)` — Claude Haiku (Strands-native, see PLAN.md decision)
 - [ ] System prompt in `src/prompts/agent_system.py` — movie-assistant persona, tool-selection guidance
 
 ### Notebook demos — 8 concrete prompts + MAE eval, across all 5 capabilities

@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Secrets / local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Data — keep repo small, reviewers copy DBs + regenerate parquet
+db/*.db
+data/*.parquet
+
+# Packaging artifacts
+*.zip
+build/
+dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE — personal only
+.vscode/
+.idea/
+.claude/settings.local.json

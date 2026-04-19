@@ -10,14 +10,16 @@ Deliver an LLM-integrated movie system that (1) enriches a 50–100 movie sample
 
 - **Language:** Python 3.11+
 - **LLM provider:** AWS Bedrock (runs in our own AWS account — no OpenAI API keys, no vendor billing setup)
-- **Models:**
-  - `openai.gpt-oss-20b-1:0` — enrichment (bulk structured extraction; $0.07 / $0.30 per 1M)
-  - `openai.gpt-oss-120b-1:0` — recommendations, rating prediction, NL-query parsing (reasoning; $0.15 / $0.60 per 1M)
-  - `us.anthropic.claude-3-5-haiku-20241022-v1:0` — **fallback** if gpt-oss JSON reliability underperforms (proven pattern from prior ml-pipeline project)
+- **Models — two-model split by workload, not by fallback:**
+  - `openai.gpt-oss-20b-1:0` — **Task 1 enrichment** (bulk structured extraction; $0.07 / $0.30 per 1M). Chosen for cost + capability fit on high-volume JSON extraction where we control the prompt contract directly.
+  - `us.anthropic.claude-haiku-4-5-20251001-v1:0` — **Task 2 agent reasoning** ($0.80 / $4 per 1M). Chosen because Strands' `BedrockModel` is Claude-native: hardcoded `_MODELS_INCLUDE_STATUS = ["anthropic.claude"]` branch for tool-result formatting, default model is Claude Sonnet, every example in the docs uses Claude. Using OpenAI gpt-oss through Strands is unverified and a known 45-min-timebox risk.
+  - Same Claude Haiku also serves as **Task 1 fallback** if gpt-oss JSON reliability drops below 90%. One backup model, two roles.
+- **Why this split is the right call (not a compromise):** bulk structured extraction and agentic tool-calling are different jobs. gpt-oss is cheaper and fine when we hand-write the prompt and parser. Claude is Strands-native and battle-tested for tool use. Picking the right model per job is better architecture than "one model everywhere" — and it still demonstrates multi-model fluency on AWS.
+- **Region:** `us-east-1`. Strands' `BedrockModel` defaults to `us-west-2`, so we pass `region_name="us-east-1"` explicitly in `src/config.py` **and** set `AWS_REGION=us-east-1` in `.env` for belt-and-suspenders (Strands' bedrock.py reads `AWS_REGION` when `region_name` is unset).
 - **Auth:** boto3 default credential chain. Local dev uses AWS SDK profile; Lambda uses IAM role. **No API keys, no secrets in env.**
 - **Architecture — hybrid:**
   - **Task 1 (enrichment)** — direct `bedrock-runtime.invoke_model` via a thin `src/llm.py` (~30 lines: invoke → parse JSON → Pydantic validate → retry). This is a deterministic 75-row loop — not agentic, no framework needed.
-  - **Task 2 (movie system)** — **Strands Agents SDK** with `BedrockModel`. One agent, five tools: `query_movies`, `get_enriched_movie`, `compare_movies`, `predict_user_rating`, `summarize_user_preferences`. Handles recommend / query / compare / predict / user-preference-summary from a single entry point. Tool docstrings are the prompts; system prompt sets movie-assistant persona.
+  - **Task 2 (movie system)** — **Strands Agents SDK** with `BedrockModel(model_id="us.anthropic.claude-haiku-4-5-20251001-v1:0", region_name="us-east-1")`. One agent, five tools: `query_movies`, `get_enriched_movie`, `compare_movies`, `predict_user_rating`, `summarize_user_preferences`. Handles recommend / query / compare / predict / user-preference-summary from a single entry point. Tool docstrings are the prompts; system prompt sets movie-assistant persona.
 - **Why hybrid, not all-Strands:** enrichment is a batch loop with one prompt shape per row — agent overhead hurts clarity and cost. Task 2 is genuinely tool-using (decide when to filter DB, when to read cache, when to compare) — agent earns its keep and closes the README's "comparative analyses" gap for free.
 - **Code Reduction via Strands:** Using Strands for Task 2 collapses `recommend.py`, `query.py`, and `predict.py` into a single agent. It reduces ~300-400 lines of manual invoke/parse/validate/retry logic down to ~80-120 lines of clean tool definitions, with structured output and retries handled natively by the framework.
 - **Data:** SQLite (`movies.db`, `ratings.db`) via built-in `sqlite3`; pandas for transforms
@@ -139,9 +141,9 @@ All evaluation lives inline in `notebooks/movie_system.ipynb` so reviewers see p
 
 ## Risks
 
-- **Bedrock regional availability** — gpt-oss models are in us-east-1, us-east-2, us-west-2 only. Default to `us-east-1`; fail loudly if unset.
+- **Strands region default is us-west-2, not us-east-1** — `BedrockModel` falls back to `us-west-2` if neither `region_name` arg nor `AWS_REGION` env var is set. Mitigation: pass `region_name="us-east-1"` explicitly in `src/config.py` **and** set `AWS_REGION` in `.env`. Double coverage.
 - **Bedrock model access must be enabled** in the AWS console (Bedrock → Model access) before invoke will succeed. First-run check in `llm.py` surfaces this clearly.
-- **gpt-oss JSON reliability on Bedrock** — no native strict mode for these models. Mitigation: Pydantic-validate and retry up to 2×; if >10% failure rate, switch to `claude-3-5-haiku` via the same `llm.py` interface.
+- **gpt-oss JSON reliability on Bedrock** — no native strict mode for these models. Mitigation: Pydantic-validate and retry up to 2×; if >10% failure rate, switch to `claude-haiku-4-5` via the same `llm.py` interface (Haiku is already our Task 2 model, so the fallback path is proven).
 - **Strands learning curve** — first-time use under 2–3 hour budget. Mitigation: **45-minute timebox** on the initial spike. If the agent + one tool isn't returning a validated response end-to-end by then, fall back to direct-invoke modules and merge `compare` into `query` as a best-effort text response.
 - **Strands + structured output** — agent final-response validation less direct than a single invoke. Verify during the spike; if fighting, accept plain-text agent responses for non-critical capabilities (recommend, compare) and keep Pydantic on `predict` + `query` tool returns.
 - **Notebook legibility with agent traces** — tool-call sequences are noisier than linear prompts. Mitigation: configure Strands to stream decisions, render traces in a collapsible format, keep the 8–10 examples short.
@@ -153,6 +155,6 @@ All evaluation lives inline in `notebooks/movie_system.ipynb` so reviewers see p
 
 - ~~Drop `predict-rating`?~~ — **kept**, essentially free as an agent tool.
 - ~~Framework vs. direct invoke?~~ — **hybrid**: direct for Task 1 (enrichment loop), Strands for Task 2 (tool-using agent).
-- ~~Model choice?~~ — Bedrock-hosted OpenAI gpt-oss (20b for enrichment, 120b for reasoning); Claude 3.5 Haiku as fallback.
+- ~~Model choice?~~ — **revised after Strands SDK research:** `openai.gpt-oss-20b-1:0` for Task 1 enrichment (direct invoke we control); `us.anthropic.claude-haiku-4-5-20251001-v1:0` for Task 2 agent reasoning (Strands is Claude-native, hardcoded tool-result branching for `anthropic.claude` model IDs). Same Haiku doubles as Task 1 fallback. Rejected `openai.gpt-oss-120b-1:0` for Task 2 because Strands' OpenAI-on-Bedrock path is unverified.
 - ~~Commit `db/`?~~ — **gitignored.** README documents the one-line copy step. Committing a 45k-row SQLite signals we didn't think about repo hygiene.
 - ~~Lambda deploy: core or stretch?~~ — **stretch.** Core is notebook + CLI. Lambda is resume signal, not a deliverable.
