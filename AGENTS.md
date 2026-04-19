@@ -48,3 +48,17 @@ Operating guidelines for any AI agent (Claude, Cursor, Copilot, etc.) contributi
 ## Review loop
 
 Expect multiple rounds of review on PLAN.md and TASKS.md *before* implementation starts. Do not begin Phase 2+ work until the user signals alignment.
+
+## Evaluation hygiene
+
+Bugs that only surface during a live eval run are not "edge cases" — they are usually predictable leaks or thin-data cases that a pre-run review would catch. Treat the first end-to-end eval as part of review, not the final validation.
+
+Rules:
+
+- **Enumerate ground-truth paths before writing eval code.** If you're evaluating a model, write down (1) what goes into the model's prompt and (2) what the ground truth is. Any join, lookup, or history-pull that touches the ground truth is a leak candidate. Exclude it explicitly.
+- **Write a test for the leak-adjacent case.** If a prediction tool queries a user's rating history to predict their rating on movie M, write a test where the user has already rated M — verify the prediction isn't just an echo of the known rating.
+- **Don't predict on thin evidence with a confident-sounding rationale.** If a prediction function gets <3 rating samples after exclusions, return a structured error (`{"error": "insufficient_history", "n": N}`) instead of fabricating a rationale. The LLM will otherwise write a confident sentence from nothing.
+- **Quote exact counts, not vibes.** "2 of 5 exact hits, mean |delta| 1.0" beats "mostly accurate." "1 drift in 40 comparisons" beats "fully deterministic." Sample size matters; n<10 is anecdote.
+- **Categorize bugs caught mid-eval honestly in the fix commit.** Was it runtime-only discoverable, or should code review have caught it? If the latter, note what review practice would have caught it. Don't just fix and move on — the framing is a lesson.
+
+Project-local precedent: `predict_user_rating` originally pulled the user's 10 most recent ratings *including the target movie*. For any pair where the user had already rated the movie, the LLM saw the ground-truth answer in its prompt and echoed it. Fix: `AND rt.movieId != ?` in the history query. Category: should have been caught at code review — classic data-leakage pattern in recsys code. A test case for "user has rated the target movie" would have surfaced it without burning eval budget.

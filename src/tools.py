@@ -80,12 +80,9 @@ def query_movies(filter_json: str) -> str:
     where: list[str] = ["status = 'Released'"]
     params: list[Any] = []
 
-    if qf.genres:
-        clauses = []
-        for g in qf.genres:
-            clauses.append("genres LIKE ?")
-            params.append(f'%"name": "{g}"%')
-        where.append("(" + " OR ".join(clauses) + ")")
+    # Genre matching happens in pandas via parse_json_names — the `genres`
+    # column is TMDB JSON and the previous LIKE pattern was fragile to
+    # whitespace and LIKE wildcards embedded in the column value.
     if qf.min_year is not None:
         where.append("CAST(substr(releaseDate, 1, 4) AS INTEGER) >= ?")
         params.append(qf.min_year)
@@ -112,6 +109,15 @@ def query_movies(filter_json: str) -> str:
     """
     with db.connect() as conn:
         df = pd.read_sql_query(sql, conn, params=params)
+
+    # Post-SQL filters (all operate on in-memory DataFrame)
+    if qf.genres:
+        genre_set = {g.lower() for g in qf.genres}
+        df["_primary_genres"] = df["genres"].apply(
+            lambda raw: {n.lower() for n in enrich.parse_json_names(raw)}
+        )
+        df = df[df["_primary_genres"].apply(lambda names: bool(genre_set & names))]
+        df = df.drop(columns=["_primary_genres"])
 
     needs_enriched = any(
         v is not None for v in (qf.budget_tier, qf.revenue_tier, qf.sentiment, qf.min_score)
@@ -229,7 +235,6 @@ def compare_movies(movie_ids_json: str) -> str:
             themes=themes,
         ))
 
-    enriched_ids = set(rows) & set(enr.index.tolist())
     unenriched = [r.movieId for r in rows if r.overview_sentiment is None]
     note = None
     if missing:
@@ -270,8 +275,14 @@ def predict_user_rating(user_id: int, movie_id: int) -> str:
 
     if target is None:
         return json.dumps({"error": f"movieId {movie_id} not found", "user_id": user_id})
-    if history.empty:
-        return json.dumps({"error": f"no ratings for userId {user_id}", "movie_id": movie_id})
+    if len(history) < 3:
+        return json.dumps({
+            "error": "insufficient_history",
+            "user_id": user_id,
+            "movie_id": movie_id,
+            "n_user_ratings_excluding_target": len(history),
+            "note": "need at least 3 other ratings to predict without fabricating a rationale",
+        })
 
     history["genres_clean"] = history["genres"].apply(enrich.parse_json_names)
     hist_lines = "\n".join(
@@ -363,8 +374,10 @@ def summarize_user_preferences(user_id: int) -> str:
         lambda mid: enr.loc[mid]["overview_sentiment"] if mid in enr.index else None
     )
 
+    # Top-8 and bottom-5 must not overlap — otherwise middle ratings get
+    # double-counted in the prompt and bias the summary.
     top = df.head(8)
-    bottom = df.tail(5) if len(df) >= 8 else pd.DataFrame()
+    bottom = df.tail(5) if len(df) >= 13 else pd.DataFrame()
 
     def fmt(rows: pd.DataFrame) -> str:
         return "\n".join(
