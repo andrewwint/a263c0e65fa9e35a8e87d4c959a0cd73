@@ -55,12 +55,46 @@ jupyter notebook notebooks/movie_system.ipynb
 
 ## Evaluation
 
-*(Populated after the notebook runs; mirrors the notebook's Findings section.)*
+Full detail: [notebook §4](notebooks/movie_system.ipynb). Summary:
 
-- Enrichment consistency: TBD
-- Rating prediction: 5–10 illustrative examples (MAE skipped — see PLAN.md; per-movie rating counts too sparse to defend an aggregate number)
-- Total tokens / cost: TBD
-- Honest limitations: TBD
+### Cost
+
+| Workload | Model | Cost |
+|---|---|---:|
+| Task 1 enrichment (75 movies) | `openai.gpt-oss-20b-1:0` | $0.0064 |
+| Task 1 consistency check (10 × 2) | `openai.gpt-oss-20b-1:0` | ~$0.0017 |
+| Task 2 agent demos + predictions | `claude-haiku-4-5` | ~$0.05 |
+| **Total for the full rendered notebook** | | **~$0.06** |
+
+### Consistency (Task 1, temperature=0, 10 movies × 2 runs)
+
+- Categorical fields (sentiment, tiers, score): **1 drift in 40 comparisons = 2.5%**
+- `themes` free-form list: **5 of 10 movies showed some synonym variation** (same core keywords, 1–2 swapped)
+- Parquet cache sidesteps this for the submission; fresh reviewer runs will see categorical fields match ~97%, themes ~50%.
+
+### Rating prediction (Task 2, illustrative)
+
+5 (user, movie) pairs where both have ≥20 other ratings + enriched target:
+
+- **2 exact hits**, 3 within 1.0, 5 within 2.5. Mean |delta| ≈ 1.0.
+- Framing is "sensible predictions with specific rationales," not MAE — n=5 can't defend an aggregate metric.
+
+### Honest limitations
+
+- Enrichment coverage is **75 of 45,430 movies** (0.16% of catalog). Task 2 queries that filter on enriched fields will return few results.
+- Per-movie rating counts are too sparse for an MAE (e.g. *The Godfather* has 5 total ratings). Illustrative examples instead.
+- Free-form `themes` not fully deterministic at temp=0 (~50% of fresh re-invocations show synonym-level drift).
+- No unit tests for tool SQL — `src/tools.py` is exercised end-to-end in the notebook.
+- Short-term AWS SSO sessions expire mid-run (12h default). Re-auth before `jupyter nbconvert --execute`.
+
+### What I'd do with more time
+
+1. Full-catalog enrichment (~$4 on gpt-oss-20b) so enriched filters return 50+ candidates.
+2. Embedding-based theme similarity (captures "redemption" ≈ "forgiveness" without brittle synonym matching).
+3. Unit tests for `src/tools.py` — especially the leak-adjacent case on `predict_user_rating` (per AGENTS.md Evaluation hygiene rules).
+4. Per-call token instrumentation for the Strands agent → exact Task 2 cost instead of estimate.
+5. Deploy `src/agent.py` as a Lambda behind API Gateway (code is already Lambda-ready).
+6. Rating prediction via collaborative filtering as a baseline, compared head-to-head against the LLM.
 
 ## Repository layout
 

@@ -113,12 +113,13 @@ All 8 ran end-to-end, rendered tool-call traces + final answers inline.
 
 ## Phase 4 — Notebook polish & findings
 
-- [ ] Top-of-notebook: clear setup cell + overview markdown (what this notebook demonstrates)
-- [ ] Between phases: short markdown intros explaining _why_ each step exists
-- [ ] Bottom of notebook: "Findings" section with: enrichment consistency result, prediction examples summary, total cost, honest limitations (including why we didn't compute a rating-prediction MAE), "what I'd do with more time"
-- [ ] Run notebook top-to-bottom on a clean kernel; verify it completes without errors
-- [ ] Commit the notebook **with outputs rendered** — those outputs are the evaluation artifact
-- [ ] Mirror the findings summary into `README.md`
+- [x] Top-of-notebook overview: stack, reading order, prereqs, links to PLAN/TASKS/AGENTS
+- [x] Inter-phase markdown intros explain _why_ each step exists
+- [x] Stale "MAE" language removed from Phase 1 findings + section 1.5 title
+- [x] Bottom of notebook: real Findings section with **cost table**, **consistency table**, **prediction result breakdown**, **honest limitations**, **what I'd do with more time**
+- [x] Clean-kernel end-to-end run completed: **53 cells, 0 errors, 203KB rendered**
+- [x] Notebook committed with outputs rendered — the rendered cells are the evaluation artifact
+- [x] Findings summary mirrored into `README.md`
 
 ## Phase 5 — Tests (light)
 
