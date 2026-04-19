@@ -104,7 +104,7 @@ Full detail: [notebook §4](notebooks/movie_system.ipynb). Summary:
 pytest
 ```
 
-41 tests, ~3.5s, no AWS calls (all LLM paths mocked). The `tests/test_tools.py` tests are skipped automatically if `db/movies.db` and `db/ratings.db` are not present — run the setup step above to include them.
+44 tests, ~3.5s, no AWS calls (all LLM paths mocked). The `tests/test_tools.py` tests are skipped automatically if `db/movies.db` and `db/ratings.db` are not present — run the setup step above to include them.
 
 ## Repository layout
 
