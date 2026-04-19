@@ -1,8 +1,12 @@
 # Movie System — Aetna AI Engineer Take-Home
 
-LLM-integrated movie recommender, rating predictor, comparator, and NL query system built on AWS Bedrock. Primary deliverable is [`notebooks/movie_system.ipynb`](notebooks/movie_system.ipynb) — run top-to-bottom to see prompts, outputs, and evaluation inline.
+LLM-integrated movie recommender, rating predictor, comparator, and NL query system built on AWS Bedrock.
 
-See [PLAN.md](PLAN.md) for architecture decisions and [TASKS.md](TASKS.md) for the execution checklist.
+**For reviewers in a hurry:** [**SAMPLE_OUTPUTS.md**](SAMPLE_OUTPUTS.md) renders the 8 agent demo prompts + 5 rating-prediction examples inline on GitHub. No clone, no Jupyter.
+
+**For the full artifact:** [`notebooks/movie_system.ipynb`](notebooks/movie_system.ipynb) — EDA, enrichment pipeline, agent tool traces, evaluation with cost + honest limitations. All cells pre-rendered.
+
+**For design rationale:** [PLAN.md](PLAN.md) (architecture decisions), [TASKS.md](TASKS.md) (execution checklist), [AGENTS.md](AGENTS.md) (contributor guide).
 
 ## Prerequisites
 
