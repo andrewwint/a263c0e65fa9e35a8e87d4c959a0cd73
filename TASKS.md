@@ -196,3 +196,33 @@ Process-level lessons from this project. The subject-matter findings (enrichment
 - **Strikethrough-as-record.** Using `[~] ~~...~~` instead of deleting tasks that were planned but not done (or turned out unnecessary). Preserves the decision trail — a reviewer can see *what we considered and explicitly declined*, not just what we shipped.
 - **Findings sections get rewritten as measurements replace estimates.** Phase 2 findings went through three revisions: "zero drift" (unmeasured claim) → "partial determinism" (vague) → "1/40 categorical, 5/10 theme" (measured). Each rewrite was triggered by a review that asked "how do you know?"
 - **Commit messages carry the reasoning, not just the diff.** When a fix commit explains *why* the original approach was wrong and *what a future review should catch earlier*, the git log becomes the retrospective.
+
+---
+
+## Timing
+
+From git commit history. Does not include ~15–30 min of planning conversation before the first commit.
+
+| Segment | Wall-clock | Commits |
+|---|---:|---:|
+| Planning (first plan commit → first code commit) | 39 min | 1 |
+| Phase 0–1 (setup + EDA) | 18 min | 3 |
+| Phase 2 (enrichment pipeline + review follow-ups) | 23 min | 2 |
+| Phase 3 (agent + tools + 2 review rounds) | 54 min | 3 |
+| Phase 4 (notebook polish + findings + README mirror) | 7 min | 1 |
+| Phase 5 (44 tests + review fixes) | 12 min | 2 |
+| Phase 6 (SAMPLE_OUTPUTS + diagram + review cycles + retrospective) | 47 min | 8 |
+| **Total (first commit → last commit)** | **3h 20min** | **20** |
+
+Challenge budget: "approximately 2–3 hours." Strict read: **~20–50 min over** depending on whether you count the pre-commit planning conversation. The overage went to two categories:
+
+- **Phase 5 tests.** 44 tests isn't required for a 2–3hr submission (most take-homes in this bucket ship 0–5). Added them because AGENTS.md's Evaluation Hygiene section calls for a test of the leak-adjacent case — once I was writing that one, adding schema + cache + tool coverage was cheap incremental work.
+- **Phase 6 reviewer-experience polish.** SAMPLE_OUTPUTS.md, architecture diagram, fresh-clone smoke test, TASKS.md retrospective, three rounds of Q review on these artifacts. Each individually small; cumulatively ~47 min.
+
+A strict 2–3 hour stop would have been Phase 4 (notebook + README + honest limitations). That's a defensible submission on its own. Everything after is an iteration beyond.
+
+**What I'd do differently next time to stay in the box:**
+
+- Set a real 2h timer at Phase 0 and treat Phase 5/6 as "only if time remaining," not as default phases.
+- Skip the review-and-refactor cycle until after a first end-to-end submission is in hand. The review rounds caught genuine issues (ground-truth leak, title-merge bug, stale test count) but each cost 10–15 min; in a strict time-box, ship first, polish only what a specific reviewer asks for.
+- Ship Phase 4 as the submission artifact and file Phases 5–6 as a "next iteration" PR.

@@ -8,6 +8,8 @@ LLM-integrated movie recommender, rating predictor, comparator, and NL query sys
 
 **For design rationale:** [PLAN.md](PLAN.md) (architecture decisions), [TASKS.md](TASKS.md) (execution checklist), [AGENTS.md](AGENTS.md) (contributor guide).
 
+> **On the 2–3 hour budget:** ~3h 20min from first commit (planning docs) to last, split roughly **40 min planning / 1h 45min implementation through Phase 4 / 55 min Phase 5 tests + Phase 6 reviewer polish**. See [TASKS.md §Timing](TASKS.md#timing) for the per-phase breakdown and "what I'd do differently to stay in the box." A strict 2–3 hour stop would have been Phase 4 (no tests, no SAMPLE_OUTPUTS, no diagram, no retrospective) — still a defensible submission; this one is an iteration beyond.
+
 ## Architecture at a glance
 
 ```
