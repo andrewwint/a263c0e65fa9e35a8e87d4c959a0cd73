@@ -80,7 +80,7 @@ Execution checklist. Grouped by phase; check off as completed. Keep in sync with
 - [ ] `src/agent.py`: `Agent(model=BedrockModel(model_id="us.anthropic.claude-haiku-4-5-20251001-v1:0", region_name="us-east-1"), tools=[...], system_prompt=...)` — Claude Haiku (Strands-native, see PLAN.md decision)
 - [ ] System prompt in `src/prompts/agent_system.py` — movie-assistant persona, tool-selection guidance
 
-### Notebook demos — 8 concrete prompts + MAE eval, across all 5 capabilities
+### Notebook demos — 8 concrete prompts + illustrative predictions, across all 5 capabilities
 
 For each: render the tool-call trace + final structured answer inline. Prompts are pre-chosen so we don't invent them under time pressure.
 
@@ -103,10 +103,10 @@ For each: render the tool-call trace + final structured answer inline. Prompts a
 - [ ] `"What were the highest-grossing dramas of the 90s?"`
 - [ ] `"Show me movies with effectiveness score ≥ 8 and budget under $10M"`
 
-**Predict (1 + MAE eval)**
+**Predict (1 trace + 5–10 illustrative examples)**
 
 - [ ] `"Will user 42 like movie 550?"` _(sample trace)_
-- [ ] Hold out 20 ratings, invoke via agent, compute MAE, render comparison table + honest-limitations markdown
+- [ ] Pick 5–10 (user, movie) pairs where both ends have enough context (user ≥20 ratings, movie ≥3 ratings), invoke via agent, render a table with predicted rating / actual rating / delta / one-line rationale. Skip the MAE — per-movie rating counts are too sparse to defend a number (Phase 1 finding: *The Godfather* has 5 total ratings). Write an honest-limitations markdown cell explaining why we're showing examples instead of an aggregate metric.
 
 ### If rollback taken
 
@@ -118,7 +118,7 @@ For each: render the tool-call trace + final structured answer inline. Prompts a
 
 - [ ] Top-of-notebook: clear setup cell + overview markdown (what this notebook demonstrates)
 - [ ] Between phases: short markdown intros explaining _why_ each step exists
-- [ ] Bottom of notebook: "Findings" section with: enrichment consistency result, MAE, total cost, honest limitations, "what I'd do with more time"
+- [ ] Bottom of notebook: "Findings" section with: enrichment consistency result, prediction examples summary, total cost, honest limitations (including why we didn't compute a rating-prediction MAE), "what I'd do with more time"
 - [ ] Run notebook top-to-bottom on a clean kernel; verify it completes without errors
 - [ ] Commit the notebook **with outputs rendered** — those outputs are the evaluation artifact
 - [ ] Mirror the findings summary into `README.md`

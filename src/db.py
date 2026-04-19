@@ -36,10 +36,15 @@ def connect() -> Iterator[sqlite3.Connection]:
                 f"{path} not found. Copy {name} from "
                 "AetnaCodeChallenge-AIEngineers/db/ into this repo's db/ directory."
             )
+    # SQLite doesn't support bound parameters on ATTACH DATABASE across all
+    # driver builds. Path is a module-level constant we control; assert it
+    # can't break out of the SQL literal, then interpolate.
+    ratings_path = str(RATINGS_DB)
+    assert "'" not in ratings_path, f"unsafe db path: {ratings_path!r}"
     conn = sqlite3.connect(str(MOVIES_DB))
-    conn.row_factory = sqlite3.Row
-    conn.execute("ATTACH DATABASE ? AS r", (str(RATINGS_DB),))
     try:
+        conn.row_factory = sqlite3.Row
+        conn.execute(f"ATTACH DATABASE '{ratings_path}' AS r")
         yield conn
     finally:
         conn.close()

@@ -58,7 +58,7 @@ jupyter notebook notebooks/movie_system.ipynb
 *(Populated after the notebook runs; mirrors the notebook's Findings section.)*
 
 - Enrichment consistency: TBD
-- Rating prediction MAE: TBD
+- Rating prediction: 5–10 illustrative examples (MAE skipped — see PLAN.md; per-movie rating counts too sparse to defend an aggregate number)
 - Total tokens / cost: TBD
 - Honest limitations: TBD
 
