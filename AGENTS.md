@@ -6,7 +6,6 @@ Operating guidelines for any AI agent (Claude, Cursor, Copilot, etc.) contributi
 
 - **[PLAN.md](PLAN.md)** — direction, scope, decisions. Read it before starting any non-trivial task. If your work would diverge from the plan, update the plan first (or flag the conflict) — do not silently drift.
 - **[TASKS.md](TASKS.md)** — the checklist. Mark `- [ ]` → `- [x]` as each item completes. If a task isn't listed, add it before doing it.
-- **Challenge spec** — [AetnaCodeChallenge-AIEngineers/README.md](../AetnaCodeChallenge-AIEngineers/README.md). Authoritative for requirements; PLAN.md is our interpretation of it.
 
 ## Honest feedback — required
 
@@ -14,7 +13,7 @@ Operating guidelines for any AI agent (Claude, Cursor, Copilot, etc.) contributi
 - **Flag what's missing.** If a request is ambiguous, under-scoped, or ignores a real constraint (cost, time, data quality), raise it up front rather than discovering it mid-implementation.
 - **Report results truthfully.** If rating prediction has a 1.2 MAE, say so — do not hide, round, or caveat away poor numbers. "Honest limitations" is a section in the README for a reason.
 - **Don't claim success you can't verify.** If tests weren't run, say so. If the pipeline worked on 3 rows but not 75, say so.
-- **Surface cost.** Token usage and $ spend are first-class concerns on a take-home — always report them.
+- **Surface cost.** Token usage and $ spend are first-class concerns — always report them.
 
 ## Scope discipline
 

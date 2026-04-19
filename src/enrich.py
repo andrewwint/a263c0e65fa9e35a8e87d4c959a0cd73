@@ -140,7 +140,7 @@ def enrich_all(
 
     Cache schema is not versioned: if `EnrichedAttributes` gains fields,
     cached rows from an earlier schema will merge in without the new fields.
-    For a take-home this is fine — delete `data/enriched_movies.parquet`
+    For this project's scope this is fine — delete `data/enriched_movies.parquet`
     on schema change to force a fresh run.
     """
     cache_path = Path(cache_path)

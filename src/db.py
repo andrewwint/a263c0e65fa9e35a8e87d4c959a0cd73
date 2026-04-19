@@ -1,8 +1,8 @@
 """SQLite helpers for movies.db and ratings.db.
 
-Both databases are read-only inputs from the challenge. The `connect()`
-context manager opens movies.db as the main schema with ratings.db
-attached as `r`, so queries can join across both:
+Both databases are read-only source inputs. The `connect()` context
+manager opens movies.db as the main schema with ratings.db attached
+as `r`, so queries can join across both:
 
     with db.connect() as conn:
         rows = conn.execute('''
@@ -33,8 +33,8 @@ def connect() -> Iterator[sqlite3.Connection]:
     for path, name in ((MOVIES_DB, "movies.db"), (RATINGS_DB, "ratings.db")):
         if not path.exists():
             raise FileNotFoundError(
-                f"{path} not found. Copy {name} from "
-                "AetnaCodeChallenge-AIEngineers/db/ into this repo's db/ directory."
+                f"{path} not found. Copy {name} from your source-data "
+                "directory into this repo's db/ directory (see README)."
             )
     # SQLite doesn't support bound parameters on ATTACH DATABASE across all
     # driver builds. Path is a module-level constant we control; assert it

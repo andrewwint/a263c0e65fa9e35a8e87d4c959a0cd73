@@ -22,7 +22,7 @@ env/
 *.pem
 *.key
 
-# Source DB files stay local — reviewers copy from the challenge package
+# Source DB files stay local — readers copy their own .db files (see README)
 db/*.db
 
 # Enrichment cache — we commit this one so reviewers don't need Bedrock

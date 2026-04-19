@@ -1,6 +1,6 @@
 # PLAN
 
-Direction doc for the Aetna AI Engineer take-home. Source of truth for scope, decisions, and approach. Reference: [AetnaCodeChallenge-AIEngineers/README.md](../AetnaCodeChallenge-AIEngineers/README.md).
+Direction doc for this project. Source of truth for scope, decisions, and approach.
 
 ## Goal
 
@@ -33,7 +33,7 @@ Deliver an LLM-integrated movie system that (1) enriches a 50–100 movie sample
 ## Data Model
 
 - `movies.db` — 45,430 rows, one table `movies` (see README for columns)
-- `ratings.db` — 100,004 rows, `ratings(ratingId, userId, movieId, rating, timestamp)` — **not documented in challenge README but present and useful for rating-prediction + user-preference tasks**
+- `ratings.db` — 100,004 rows, `ratings(ratingId, userId, movieId, rating, timestamp)` — **not documented in the source schema but present in the data and useful for rating-prediction + user-preference tasks**
 
 Both DBs are read-only inputs. Enrichment output lands in a separate parquet, not the source DB.
 
@@ -84,7 +84,7 @@ All tool inputs/outputs are Pydantic-typed. System prompt + tool docstrings are 
 .
 ├── PLAN.md, TASKS.md, AGENTS.md, README.md
 ├── .env.example, .gitignore, requirements.txt, pyproject.toml
-├── db/                         # copied from challenge (gitignored)
+├── db/                         # source DBs copied in locally (gitignored)
 ├── data/
 │   └── enriched_movies.parquet # enrichment cache
 ├── notebooks/

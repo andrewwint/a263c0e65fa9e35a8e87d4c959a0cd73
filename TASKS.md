@@ -26,7 +26,7 @@ Execution checklist. Grouped by phase; check off as completed. Keep in sync with
 - [x] In notebook: row counts (45,430 movies / 100,004 ratings / 671 users / 9,066 rated movies), null-rate table, eligible pool count (5,360), genre distribution, rating + per-movie + per-user distributions
 - [x] In notebook: stratify by primary genre via `parse_json_names` helper (documented why — tier reasoning needs genre context)
 - [x] Notebook committed with rendered outputs
-- [x] **Surprise finding:** `genres` and `productionCompanies` are TMDB-style JSON, not the pipe-separated format documented in the challenge README. Added a defensive parser with pipe-split fallback; flagged in notebook findings.
+- [x] **Surprise finding:** `genres` and `productionCompanies` are TMDB-style JSON, not the pipe-separated format the source schema documents. Added a defensive parser with pipe-split fallback; flagged in notebook findings.
 
 ## Phase 2 — LLM wrapper + Enrichment pipeline (Task 1 — direct invoke, no agent)
 
@@ -173,16 +173,16 @@ Process-level lessons from this project. The subject-matter findings (enrichment
 - **45-minute Strands spike with a pre-committed rollback.** Paid off in confidence even though we didn't use the rollback (spike passed in 2.9s). The discipline of naming the fallback up front meant there was no "should we abandon?" debate mid-integration.
 - **Library-first, notebook-second.** Every phase built functions in `src/` first, then drove them from notebook cells. Avoided the classic notebook anti-pattern where logic lives in cells and becomes untestable. All 44 tests target `src/` modules.
 - **Layered review caught different classes of bugs.** See AGENTS.md's Review loop section for the full list. Scanners caught complexity + path-traversal flags; code review caught the title-merge bug, dead code, prompt duplication; runtime eval caught the ground-truth leak; infra caught the expired SSO token. No layer saw everything. Running all three matters.
-- **Two external reviewers, six rounds total.** Amazon Q ran three focused-review passes (Phase 2, Phase 3, Phase 5) plus one on SAMPLE_OUTPUTS. Google Gemini ran three passes (pre-Phase-3 go/no-go check, final pre-submission review, and a submission readiness review). Each reviewer caught things the other missed — Amazon Q was stronger on SQL/Python-level correctness (SQL-injection surface, cyclomatic complexity, dead code, the `_client` global); Gemini was stronger on data-integrity narrative (flagging the schema-name inconsistency between `production_effectiveness_score` and the `effectiveness_score` shorthand in few-shot examples; praising the ratings.db "join across provided data" as a senior signal). Using both is cheaper than either one twice.
+- **Two external reviewers, six rounds total.** Amazon Q ran three focused-review passes (Phase 2, Phase 3, Phase 5) plus one on SAMPLE_OUTPUTS. Google Gemini ran three passes (pre-Phase-3 go/no-go check, final pre-release review, and a release-readiness review). Each reviewer caught things the other missed — Amazon Q was stronger on SQL/Python-level correctness (SQL-injection surface, cyclomatic complexity, dead code, the `_client` global); Gemini was stronger on data-integrity narrative (flagging the schema-name inconsistency between `production_effectiveness_score` and the `effectiveness_score` shorthand in few-shot examples; praising the ratings.db "join across provided data" as a senior signal). Using both is cheaper than either one twice.
 - **Honest framing beat statistical theater.** Reframing "MAE on 20 holdout ratings" to "5 illustrative prediction examples with rationales" was uncomfortable — it feels like downgrading. It was the correct call, because per-movie rating sparsity made an MAE unscientifically noisy. Reviewers respect measured claims over overclaimed numbers.
-- **Fresh-clone smoke test.** Revealed two things local development hid: `db/` and `data/` directories don't exist on clone (fixed with `.gitkeep`), and the enriched parquet was gitignored (fixed with `!` negation + explicit commit). "It runs on my machine" isn't submission-ready.
+- **Fresh-clone smoke test.** Revealed two things local development hid: `db/` and `data/` directories don't exist on clone (fixed with `.gitkeep`), and the enriched parquet was gitignored (fixed with `!` negation + explicit commit). "It runs on my machine" isn't release-ready.
 
 ### What went wrong (and what I'd catch sooner next time)
 
 - **Ground-truth leak in `predict_user_rating`.** Classic recsys pattern (history pull didn't exclude the target). Caught at eval time, not review time. Added a regression test (`test_predict_user_rating_no_ground_truth_leak`) that FAILS when the fix is reverted. The lesson is in AGENTS.md Evaluation hygiene: **before writing eval code, enumerate the leak paths**.
 - **`title_x` / `title_y` merge bug.** The enriched parquet had a `title` column that collided with `movies.db`'s `title` during merge; pandas silently renamed to `title_x` / `title_y` and the output filter looked for plain `title`, so the field was dropped from the JSON tool output. The agent compensated by inferring titles from `title_x` leakage — undetectable from the rendered output. Found only during the refactor smoke-test. Lesson: **the first direct call to a tool outside the agent loop is also a review moment**.
 - **"Fully deterministic at temp=0" was wrong.** Initial consistency claim was based on 3 movies × 2 runs — anecdote. Amazon Q pushed for 10 × 2; actual measurement showed categorical fields 97.5% stable, themes ~50% synonym-drift. Exact numbers beat vibes.
-- **Stale model IDs.** Went through three rounds of model decisions before settling. `openai.gpt-oss-120b` was in PLAN.md for Phase 2 — dropped during Strands SDK research (Strands is Claude-native). `claude-3-5-haiku` replaced it — then AWS legacy-locked 3.5 and required a switch to Haiku 4.5 mid-setup. Bedrock model IDs are not stable across a single take-home cycle.
+- **Stale model IDs.** Went through three rounds of model decisions before settling. `openai.gpt-oss-120b` was in PLAN.md for Phase 2 — dropped during Strands SDK research (Strands is Claude-native). `claude-3-5-haiku` replaced it — then AWS legacy-locked 3.5 and required a switch to Haiku 4.5 mid-setup. Bedrock model IDs are not stable across a single project cycle.
 - **SSO sessions expire mid-run.** 12-hour default. Hit this twice during development, once mid-notebook-execution. For a reviewer running fresh, the README + notebook-prereqs now flag the re-auth step.
 
 ### Scope calls that saved time
@@ -215,15 +215,15 @@ From git commit history. Does not include ~15–30 min of planning conversation 
 | Phase 6 (SAMPLE_OUTPUTS + diagram + review cycles + retrospective) | 47 min | 8 |
 | **Total (first commit → last commit)** | **3h 20min** | **20** |
 
-Challenge budget: "approximately 2–3 hours." Strict read: **~20–50 min over** depending on whether you count the pre-commit planning conversation. The overage went to two categories:
+Self-imposed budget: ~2–3 hours. Strict read: **~20–50 min over** depending on whether you count the pre-commit planning conversation. The overage went to two categories:
 
-- **Phase 5 tests.** 44 tests isn't required for a 2–3hr submission (most take-homes in this bucket ship 0–5). Added them because AGENTS.md's Evaluation Hygiene section calls for a test of the leak-adjacent case — once I was writing that one, adding schema + cache + tool coverage was cheap incremental work.
+- **Phase 5 tests.** 44 tests isn't strictly required at this scope (a 2–3 hour project typically ships 0–5). Added them because AGENTS.md's Evaluation Hygiene section calls for a test of the leak-adjacent case — once I was writing that one, adding schema + cache + tool coverage was cheap incremental work.
 - **Phase 6 reviewer-experience polish.** SAMPLE_OUTPUTS.md, architecture diagram, fresh-clone smoke test, TASKS.md retrospective, three rounds of Amazon Q review plus a final Google Gemini review on these artifacts. Each individually small; cumulatively ~47 min.
 
-A strict 2–3 hour stop would have been Phase 4 (notebook + README + honest limitations). That's a defensible submission on its own. Everything after is an iteration beyond.
+A strict 2–3 hour stop would have been Phase 4 (notebook + README + honest limitations). That's a defensible release on its own. Everything after is an iteration beyond.
 
 **What I'd do differently next time to stay in the box:**
 
 - Set a real 2h timer at Phase 0 and treat Phase 5/6 as "only if time remaining," not as default phases.
-- Skip the review-and-refactor cycle until after a first end-to-end submission is in hand. The review rounds caught genuine issues (ground-truth leak, title-merge bug, stale test count) but each cost 10–15 min; in a strict time-box, ship first, polish only what a specific reviewer asks for.
-- Ship Phase 4 as the submission artifact and file Phases 5–6 as a "next iteration" PR.
+- Skip the review-and-refactor cycle until after a first end-to-end release is in hand. The review rounds caught genuine issues (ground-truth leak, title-merge bug, stale test count) but each cost 10–15 min; in a strict time-box, ship first, polish only what a specific reader asks for.
+- Ship Phase 4 as the primary artifact and file Phases 5–6 as a "next iteration" PR.

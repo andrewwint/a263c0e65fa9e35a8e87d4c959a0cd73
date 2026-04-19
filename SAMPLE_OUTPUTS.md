@@ -242,7 +242,7 @@ Both rationales reference specific films from the user's history by title and ra
 
 ## 10. Prompting techniques (what the LLM actually sees)
 
-The challenge asks to "demonstrate prompting techniques." Three distinct prompt surfaces drive this system — each lives in its own file:
+Three distinct prompt surfaces drive this system — each lives in its own file:
 
 ### Task 1 enrichment — structured extraction with genre-relative reasoning
 

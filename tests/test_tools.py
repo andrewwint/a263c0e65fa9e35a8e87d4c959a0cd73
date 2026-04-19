@@ -22,7 +22,7 @@ from src.tools import (
 
 pytestmark = pytest.mark.skipif(
     not db.MOVIES_DB.exists() or not db.RATINGS_DB.exists(),
-    reason="db files not present in db/ (copy from the challenge per README)",
+    reason="db files not present in db/ (copy source .db files per README)",
 )
 
 
