@@ -21,11 +21,12 @@ Execution checklist. Grouped by phase; check off as completed. Keep in sync with
 
 ## Phase 1 — Data exploration (in notebook)
 
-- [ ] Write `src/db.py` connection helpers for both DBs
-- [ ] Scaffold `notebooks/movie_system.ipynb` with section headers: Setup → EDA → Enrichment → Recommend → Predict → Query → Findings
-- [ ] In notebook: row counts, null rates on key columns, rating distribution histogram
-- [ ] In notebook: decide and document stratification buckets for the 75-movie sample
-- [ ] Commit exploration findings as markdown cells in the notebook (not a separate file)
+- [x] Write `src/db.py` connection helpers — single `connect()` context manager opens movies.db with ratings.db attached as schema `r`
+- [x] Scaffold `notebooks/movie_system.ipynb` with sections: Setup → EDA → Enrichment → Agent+Tools → Findings
+- [x] In notebook: row counts (45,430 movies / 100,004 ratings / 671 users / 9,066 rated movies), null-rate table, eligible pool count (5,360), genre distribution, rating + per-movie + per-user distributions
+- [x] In notebook: stratify by primary genre via `parse_json_names` helper (documented why — tier reasoning needs genre context)
+- [x] Notebook committed with rendered outputs
+- [x] **Surprise finding:** `genres` and `productionCompanies` are TMDB-style JSON, not the pipe-separated format documented in the challenge README. Added a defensive parser with pipe-split fallback; flagged in notebook findings.
 
 ## Phase 2 — LLM wrapper + Enrichment pipeline (Task 1 — direct invoke, no agent)
 
