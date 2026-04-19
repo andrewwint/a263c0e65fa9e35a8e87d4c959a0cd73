@@ -49,6 +49,21 @@ Operating guidelines for any AI agent (Claude, Cursor, Copilot, etc.) contributi
 
 Expect multiple rounds of review on PLAN.md and TASKS.md *before* implementation starts. Do not begin Phase 2+ work until the user signals alignment.
 
+**Each review layer catches a different class of bug. No single layer is sufficient.**
+
+- **Automated scanners** — known vulnerability patterns, complexity metrics, dead code. Cheap, uniform, noisy on false positives.
+- **Human / model code review** — logic errors, dead code, design issues, prompt redundancy. More signal, slower.
+- **Runtime eval (the first end-to-end run)** — data-pipeline bugs that only manifest with real data (leaks, thin-data cases, merge-rename collisions, environment/auth issues). Expensive to run but catches what the other two miss.
+
+On this project the split played out concretely:
+
+- *Scanners* flagged path-traversal + cyclomatic-complexity (both informational, not blockers).
+- *Code review* caught the title-merge bug, dead code, top/bottom overlap, prompt duplication.
+- *Runtime eval* caught the ground-truth leak in `predict_user_rating` — a classic recsys pattern that no scanner had any chance of seeing.
+- *Infra/environment* caught the expired SSO token mid-run.
+
+Run all three before marking a phase done. If you only run one, you ship the bugs the other two would have caught.
+
 ## Evaluation hygiene
 
 Bugs that only surface during a live eval run are not "edge cases" — they are usually predictable leaks or thin-data cases that a pre-run review would catch. Treat the first end-to-end eval as part of review, not the final validation.

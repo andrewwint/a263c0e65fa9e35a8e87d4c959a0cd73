@@ -131,8 +131,10 @@ def test_predict_user_rating_no_ground_truth_leak(monkeypatch):
 
     monkeypatch.setattr(llm, "invoke", fake_invoke)
 
-    # Pick a (user, movie) pair that actually exists in ratings.db. Must be
-    # a user with ≥3 *other* ratings so the tool doesn't short-circuit.
+    # Pick a (user, movie) pair that exists in ratings.db, where:
+    # - user has ≥20 other ratings (so the tool doesn't hit the insufficient-history guard)
+    # - the movie's title is UNIQUE in the catalog (so a title-based leak assertion
+    #   can't fire on an unrelated same-titled movie being legitimately in history)
     with db.connect() as conn:
         pair = conn.execute("""
             SELECT r1.userId, r1.movieId, m.title
@@ -140,8 +142,13 @@ def test_predict_user_rating_no_ground_truth_leak(monkeypatch):
             WHERE r1.userId IN (
                 SELECT userId FROM r.ratings GROUP BY userId HAVING COUNT(*) >= 20
             )
+            AND m.title IN (
+                SELECT title FROM movies GROUP BY title HAVING COUNT(*) = 1
+            )
             LIMIT 1
         """).fetchone()
+    if pair is None:
+        pytest.skip("no eligible (user, unique-titled movie) pair in DB")
     user_id, movie_id, target_title = int(pair["userId"]), int(pair["movieId"]), pair["title"]
 
     predict_user_rating(user_id=user_id, movie_id=movie_id)
@@ -149,6 +156,8 @@ def test_predict_user_rating_no_ground_truth_leak(monkeypatch):
     prompt = captured[0]
 
     history_section = prompt.split("Target movie")[0]
+    # Title is unique in the catalog by construction above, so if it appears in
+    # the history section, it's the target — and we've leaked ground truth.
     assert target_title not in history_section, (
         f"LEAK: target movie title {target_title!r} appeared in the user-history "
         "portion of the prompt. predict_user_rating must exclude the target from "

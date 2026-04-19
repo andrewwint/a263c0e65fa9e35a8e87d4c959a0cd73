@@ -94,6 +94,14 @@ Full detail: [notebook §4](notebooks/movie_system.ipynb). Summary:
 4. Deploy `src/agent.py` as a Lambda behind API Gateway (code is already Lambda-ready).
 5. Rating prediction via collaborative filtering as a baseline, compared head-to-head against the LLM.
 
+## Tests
+
+```bash
+pytest
+```
+
+41 tests, ~3.5s, no AWS calls (all LLM paths mocked). The `tests/test_tools.py` tests are skipped automatically if `db/movies.db` and `db/ratings.db` are not present — run the setup step above to include them.
+
 ## Repository layout
 
 ```

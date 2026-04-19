@@ -71,15 +71,32 @@ def test_query_filter_roundtrip():
 
 
 @pytest.mark.parametrize("kwargs", [
-    {"budget_tier": "huge"},       # invalid tier
-    {"sentiment": "DROP TABLE"},   # no SQL injection surface — Pydantic rejects the string
-    {"limit": 999},                # out of range
-    {"limit": 0},                  # out of range
-    {"sort_by": "arbitrary_sql"},  # invalid Literal
+    {"budget_tier": "huge"},        # invalid tier
+    {"sentiment": "DROP TABLE"},    # no SQL injection surface — Pydantic rejects the string
+    {"limit": 999},                 # out of range
+    {"limit": 0},                   # out of range
+    {"sort_by": "arbitrary_sql"},   # invalid Literal
+    {"min_score": 0},               # below 1
+    {"min_score": 11},              # above 10
 ])
 def test_query_filter_rejects_invalid(kwargs):
     with pytest.raises(ValidationError):
         QueryFilter(**kwargs)
+
+
+def test_user_preference_summary_llm_rejects_too_many_items():
+    from src.schemas import _UserPreferenceSummaryLLM
+    with pytest.raises(ValidationError):
+        _UserPreferenceSummaryLLM(
+            favorite_genres=["a", "b", "c", "d", "e", "f"],  # 6 > max_length=5
+            favorite_themes=["x"], typical_sentiment="positive", summary="...",
+        )
+    with pytest.raises(ValidationError):
+        _UserPreferenceSummaryLLM(
+            favorite_genres=["a"],
+            favorite_themes=["1", "2", "3", "4", "5", "6"],  # 6 > max_length=5
+            typical_sentiment="neutral", summary="...",
+        )
 
 
 def test_comparison_table_roundtrip():

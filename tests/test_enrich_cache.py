@@ -30,7 +30,7 @@ def test_enrich_all_hits_cache_on_second_run(tmp_path, monkeypatch):
     ])
     cached_df.to_parquet(cache_path, index=False)
 
-    invoke_spy = MagicMock(side_effect=AssertionError("llm.invoke must not be called on a full cache hit"))
+    invoke_spy = MagicMock()
     monkeypatch.setattr(llm, "invoke", invoke_spy)
 
     movies = pd.DataFrame([
@@ -45,7 +45,7 @@ def test_enrich_all_hits_cache_on_second_run(tmp_path, monkeypatch):
     result = enrich.enrich_all(movies, cache_path=cache_path)
 
     assert len(result) == 2
-    assert invoke_spy.call_count == 0
+    assert invoke_spy.call_count == 0, "llm.invoke must not be called on a full cache hit"
     assert set(result["movieId"]) == {1, 2}
 
 
