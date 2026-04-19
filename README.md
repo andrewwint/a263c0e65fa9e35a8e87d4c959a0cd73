@@ -8,6 +8,36 @@ LLM-integrated movie recommender, rating predictor, comparator, and NL query sys
 
 **For design rationale:** [PLAN.md](PLAN.md) (architecture decisions), [TASKS.md](TASKS.md) (execution checklist), [AGENTS.md](AGENTS.md) (contributor guide).
 
+## Architecture at a glance
+
+```
+┌─── Task 1: Enrichment (batch, direct invoke) ──────────────────────────────┐
+│  src/enrich.py ──► openai.gpt-oss-20b-1:0 (Bedrock, us-east-1)             │
+│       │  75 movies × 1 call ≈ $0.006                                       │
+│       ▼                                                                    │
+│  data/enriched_movies.parquet  (5 attrs × 75 movies, committed to repo)    │
+└───────────────────────┬────────────────────────────────────────────────────┘
+                        │ parquet read by Task 2 tools
+                        ▼
+┌─── Task 2: Movie system (interactive, Strands agent) ──────────────────────┐
+│  user prompt ──► src/agent.py                                              │
+│                  BedrockModel(claude-haiku-4-5, us-east-1)                 │
+│                        │ chooses 1+ tools per turn                         │
+│                        ▼                                                   │
+│  query_movies · get_enriched_movie · compare_movies                        │
+│  predict_user_rating · summarize_user_preferences                          │
+│                        │ parameterized SQL only (no LLM-written SQL)       │
+│                        ▼                                                   │
+│  db/movies.db  ·  db/ratings.db  ·  data/enriched_movies.parquet           │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+Three decisions worth noting:
+
+- **Parquet is the bridge** between the two tasks — Task 1 writes once, Task 2 reads. Committed to the repo so reviewers don't need Bedrock access to see Task 1's output or run the tool tests.
+- **Two models at Bedrock.** `gpt-oss-20b` is cheap and good enough for structured extraction where we control the prompt directly. Claude Haiku 4.5 is Strands-native for agent tool-calling. See [PLAN.md](PLAN.md) for why not the same model for both.
+- **LLM never writes SQL.** Tool inputs are Pydantic-validated JSON filter specs; server-side code translates them to parameterized SQL. Guard-tested in [`tests/test_tools.py`](tests/test_tools.py).
+
 ## Prerequisites
 
 - Python 3.11+
