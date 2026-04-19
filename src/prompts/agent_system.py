@@ -21,7 +21,7 @@ RATING-PREDICTION FEW-SHOT EXAMPLES (for the predict_user_rating tool):
 
 Example A
   User history: 5 × heist/crime films rated 4.0–5.0; almost never watches romance.
-  Target: a new crime drama, positive sentiment, effectiveness_score 8.
+  Target: a new crime drama, positive sentiment, production_effectiveness_score 8.
   Predicted: 4.5 — "matches documented crime preference and high-quality enrichment signal"
 
 Example B
@@ -31,7 +31,7 @@ Example B
 
 Example C
   User history: broad, 2.5–4.0 across many genres, mean ≈ 3.4; no dominant pattern.
-  Target: an average-effectiveness drama (score 5, neutral sentiment).
+  Target: an average-effectiveness drama (production_effectiveness_score 5, neutral sentiment).
   Predicted: 3.5 — "regresses to this user's mean; no specific signal to push higher or lower"
 
 When responding to the human:
