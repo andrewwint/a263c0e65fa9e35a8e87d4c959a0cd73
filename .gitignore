@@ -22,9 +22,14 @@ env/
 *.pem
 *.key
 
-# Data — keep repo small, reviewers copy DBs + regenerate parquet
+# Source DB files stay local — reviewers copy from the challenge package
 db/*.db
+
+# Enrichment cache — we commit this one so reviewers don't need Bedrock
+# access to see Task 1's output or run the tool tests. It's 16 KB and IS
+# the Phase 1 deliverable. Other parquets (if ever added) stay ignored.
 data/*.parquet
+!data/enriched_movies.parquet
 
 # Packaging artifacts
 *.zip
