@@ -123,9 +123,11 @@ All 8 ran end-to-end, rendered tool-call traces + final answers inline.
 
 ## Phase 5 — Tests (light)
 
-- [ ] `test_schemas.py` — Pydantic validation round-trips for all schemas
-- [ ] `test_tools.py` — `query_movies` produces parameterized SQL (no injection); `compare_movies` handles 2 and 3 ids
-- [ ] `test_enrich_cache.py` — second run hits cache, zero Bedrock calls
+- [x] `test_schemas.py` — 17 tests covering round-trips, out-of-range rejection, invalid-Literal rejection, theme-count bounds for all Phase 2/3 schemas
+- [x] `test_tools.py` — 13 tests: title-merge regression guard, genre filter (case-insensitive, LIKE-wildcard safe), year range, malformed-JSON rejection, `compare_movies` with 2/3 ids + missing-id notation + single-id rejection, `get_enriched_movie` unenriched-error, `predict_user_rating` insufficient-history guard, and the **critical no-ground-truth-leak test** (per AGENTS.md Evaluation hygiene)
+- [x] `test_enrich_cache.py` — full cache hit (0 LLM calls) + partial cache (1 LLM call for 1 uncached row)
+- [x] Verified the leak test is meaningful: temporarily reverted `AND rt.movieId != ?` from the history query, ran the test, it failed with `AssertionError: target movie title appeared in the user-history portion of the prompt`. Restored the fix; test passes.
+- [x] Full suite: **41 tests, all pass in ~3.5s**, no AWS calls (all LLM paths mocked)
 
 ## Phase 6 — Submission
 

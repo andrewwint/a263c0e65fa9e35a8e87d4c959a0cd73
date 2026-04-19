@@ -84,17 +84,15 @@ Full detail: [notebook §4](notebooks/movie_system.ipynb). Summary:
 - Enrichment coverage is **75 of 45,430 movies** (0.16% of catalog). Task 2 queries that filter on enriched fields will return few results.
 - Per-movie rating counts are too sparse for an MAE (e.g. *The Godfather* has 5 total ratings). Illustrative examples instead.
 - Free-form `themes` not fully deterministic at temp=0 (~50% of fresh re-invocations show synonym-level drift).
-- No unit tests for tool SQL — `src/tools.py` is exercised end-to-end in the notebook.
 - Short-term AWS SSO sessions expire mid-run (12h default). Re-auth before `jupyter nbconvert --execute`.
 
 ### What I'd do with more time
 
 1. Full-catalog enrichment (~$4 on gpt-oss-20b) so enriched filters return 50+ candidates.
 2. Embedding-based theme similarity (captures "redemption" ≈ "forgiveness" without brittle synonym matching).
-3. Unit tests for `src/tools.py` — especially the leak-adjacent case on `predict_user_rating` (per AGENTS.md Evaluation hygiene rules).
-4. Per-call token instrumentation for the Strands agent → exact Task 2 cost instead of estimate.
-5. Deploy `src/agent.py` as a Lambda behind API Gateway (code is already Lambda-ready).
-6. Rating prediction via collaborative filtering as a baseline, compared head-to-head against the LLM.
+3. Per-call token instrumentation for the Strands agent → exact Task 2 cost instead of estimate.
+4. Deploy `src/agent.py` as a Lambda behind API Gateway (code is already Lambda-ready).
+5. Rating prediction via collaborative filtering as a baseline, compared head-to-head against the LLM.
 
 ## Repository layout
 
