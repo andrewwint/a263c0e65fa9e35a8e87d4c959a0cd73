@@ -13,8 +13,8 @@ Execution checklist. Grouped by phase; check off as completed. Keep in sync with
 - [x] Copy `movies.db` and `ratings.db` into `db/` (gitignored)
 - [x] Add `jupyter`, `notebook`, `matplotlib`, `seaborn` to `requirements.txt`
 - [x] Create project `README.md` skeleton (setup, run, design notes, AWS prerequisites)
-- [ ] **USER:** Create virtualenv, install deps, verify `python -c "import sqlite3, boto3, pydantic, jupyter, strands"`
-- [ ] **USER:** Enable Bedrock model access in AWS console (**us-east-1**) for:
+- [x] **USER:** Create virtualenv, install deps, verify `python -c "import sqlite3, boto3, pydantic, jupyter, strands"`
+- [x] **USER:** Enable Bedrock model access in AWS console (**us-east-1**) for:
   - `openai.gpt-oss-20b-1:0` — Task 1 enrichment
   - `us.anthropic.claude-haiku-4-5-20251001-v1:0` — Task 2 agent reasoning + Task 1 fallback
 - [x] Smoke-test Bedrock + Strands — `python tests/smoke_bedrock.py` passed all 3 checks (boto3 gpt-oss-20b, boto3 Haiku 4.5, Strands+Haiku 4.5). Confirmed: Haiku 3.5 is legacy-locked (switched to 4.5), gpt-oss-20b emits reasoning blocks (handle with `reasoning_effort="low"` in Phase 2)
@@ -32,23 +32,23 @@ Execution checklist. Grouped by phase; check off as completed. Keep in sync with
 
 ### `src/llm.py` — Bedrock wrapper (Lambda-ready, used by Task 1 only)
 
-- [ ] `invoke(prompt, schema, model_id) -> BaseModel`: bedrock-runtime → parse content blocks (skip reasoningContent, extract text) → JSON parse → Pydantic validate → retry up to 2× on `ValidationError`
-- [ ] Pass `additionalModelRequestFields={"reasoning_effort": "low"}` for gpt-oss to minimize reasoning-token burn (smoke test showed 72→41 tokens on a 2-char reply at default effort)
-- [ ] Set `maxTokens` generously (≥1000) to leave reasoning headroom plus answer space
-- [ ] Log input/output token counts per call
-- [ ] Surface clear error if Bedrock model access is not enabled
-- [ ] Unit test the retry path with a mocked client
+- [x] `invoke(prompt, schema, model_id) -> InvokeResult[T]`: bedrock-runtime → skip reasoningContent blocks → strip ```json fences → JSON parse → Pydantic validate → retry up to 2× on `JSONDecodeError` or `ValidationError`
+- [x] Pass `additionalModelRequestFields={"reasoning_effort": "low"}` for gpt-oss (auto-detected by model_id substring)
+- [x] `maxTokens=2000` default, override per-call
+- [x] Token counts returned on every successful call via `InvokeResult`
+- [x] Clear `RuntimeError` if Bedrock model access is not enabled (AccessDeniedException)
+- [x] 8 unit tests covering happy path, retry-on-JSON-error, retry-on-schema-violation, fence stripping, reasoning-block skipping, gpt-oss flag routing, Claude flag absence, and terminal failure. All pass.
 
 ### Enrichment (library in `src/`, demo in notebook)
 
-- [ ] Define Pydantic `EnrichedAttributes` schema in `src/schemas.py` (5 fields)
-- [ ] Draft enrichment prompt in `src/prompts/enrich.py` (system + user template, JSON-only instruction)
-- [ ] Implement `src/enrich.py` functions: `sample_movies(n)`, `enrich_one(movie)`, `enrich_all(movies, cache_path)` — no script-level code
-- [ ] In notebook: dry-run on 3 movies with `gpt-oss-20b`, render the prompt + raw response + parsed JSON inline
-- [ ] In notebook: if JSON failure rate >10%, swap to `us.anthropic.claude-haiku-4-5-20251001-v1:0` with a markdown note explaining the swap
-- [ ] In notebook: full run on 75 movies, render a sample DataFrame preview, verify cache hit on second run
-- [ ] In notebook: consistency check at `temperature=0` — render the diff cell (should be empty)
-- [ ] In notebook: per-call token log cell + cost summary
+- [x] `EnrichedAttributes` in `src/schemas.py` — 5 fields, `themes` constrained to 3–5 items, score is int 1–10
+- [x] Enrichment prompt in `src/prompts/enrich.py` — system prompt explains tier-relative-to-genre reasoning + good/bad theme examples
+- [x] `src/enrich.py`: `sample_movies(n)` uses largest-remainder stratified allocation; `enrich_one` + `enrich_all` loop with parquet cache keyed on `movieId`
+- [x] In notebook: full prompt rendered, dry-run on 3 movies with tokens shown
+- [x] In notebook: full run on 75 movies — **zero JSON failures, no fallback needed**
+- [x] In notebook: cache verification — rerun reads parquet only (3s vs. 58s cold)
+- [x] In notebook: consistency check at `temperature=0` — **partial determinism honestly reported**: categorical fields stable, `themes` list has minor synonym variation across re-invocations (documented in findings)
+- [x] In notebook: token + cost summary — $0.0064 total for 75 movies ($0.00009/movie)
 
 ## Phase 3 — System design (Task 2 — Strands agent with 4 tools)
 
@@ -106,7 +106,7 @@ For each: render the tool-call trace + final structured answer inline. Prompts a
 **Predict (1 trace + 5–10 illustrative examples)**
 
 - [ ] `"Will user 42 like movie 550?"` _(sample trace)_
-- [ ] Pick 5–10 (user, movie) pairs where both ends have enough context (user ≥20 ratings, movie ≥3 ratings), invoke via agent, render a table with predicted rating / actual rating / delta / one-line rationale. Skip the MAE — per-movie rating counts are too sparse to defend a number (Phase 1 finding: *The Godfather* has 5 total ratings). Write an honest-limitations markdown cell explaining why we're showing examples instead of an aggregate metric.
+- [ ] Pick 5–10 (user, movie) pairs where both ends have enough context (user ≥20 ratings, movie ≥3 ratings), invoke via agent, render a table with predicted rating / actual rating / delta / one-line rationale. Skip the MAE — per-movie rating counts are too sparse to defend a number (Phase 1 finding: _The Godfather_ has 5 total ratings). Write an honest-limitations markdown cell explaining why we're showing examples instead of an aggregate metric.
 
 ### If rollback taken
 
