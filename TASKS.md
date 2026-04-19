@@ -56,57 +56,54 @@ Execution checklist. Grouped by phase; check off as completed. Keep in sync with
 
 ### Spike + timebox (first 45 min of this phase)
 
-- [ ] `src/agent.py`: stand up a minimal Strands agent with `BedrockModel` + **one** tool (`query_movies` stub)
-- [ ] Run one prompt end-to-end ("list 3 action movies"), confirm tool call + response
-- [ ] **Decision point:** if not working after 45 min → rollback to direct-invoke: `recommend.py`, `predict.py`, `query.py` modules (original plan), merge `compare` into `query` as best-effort
-- [ ] If working: proceed below
+- [x] Minimal Strands agent with `BedrockModel` stood up; single-tool smoke test returned in 2.9s on first try. Spike passed — no rollback.
 
 ### Schemas
 
-- [ ] `QueryFilter` in `src/schemas.py` — validated filter spec (no raw SQL from LLM)
-- [ ] `EnrichedMovie`, `ComparisonTable`, `RatingPrediction`, `UserPreferenceSummary` in `src/schemas.py`
+- [x] `QueryFilter` in `src/schemas.py` — genres, tiers, sentiment, score, year/budget/runtime ranges, sort_by, limit. All map to `?` bindings in `query_movies`.
+- [x] `ComparisonRow`, `ComparisonTable`, `RatingPrediction`, `UserPreferenceSummary` in `src/schemas.py`. Split internal `_RatingPredictionLLM` and `_UserPreferenceSummaryLLM` so the LLM fills only the content fields and the tool adds user_id/movie_id/counts server-side (no hallucinated IDs).
 
 ### Tools (`src/tools.py`)
 
-- [ ] `@tool query_movies(filter: QueryFilter) -> list[Movie]` — parameterized SQL against movies.db + enriched parquet
-- [ ] `@tool get_enriched_movie(movie_id: int) -> EnrichedMovie` — parquet cache read
-- [ ] `@tool compare_movies(movie_ids: list[int]) -> ComparisonTable` — side-by-side on budget/revenue/runtime/tiers/sentiment/themes
-- [ ] `@tool predict_user_rating(user_id: int, movie_id: int) -> RatingPrediction` — user history + target enrichment + few-shot
-- [ ] `@tool summarize_user_preferences(user_id: int) -> UserPreferenceSummary` — rating history + enriched attrs → preference profile (addresses README "user preference summaries")
-- [ ] Clear, specific docstrings on every tool (these are the prompts)
+- [x] `@tool query_movies(filter_json)` — parses JSON → `QueryFilter`, builds parameterized SQL, merges with enriched parquet. `needs_enriched` inner-join branch means tier/sentiment/score filters strictly respect the 75-movie sample.
+- [x] `@tool get_enriched_movie(movie_id)` — parquet lookup; returns `{error}` JSON when the movie is outside the enriched sample.
+- [x] `@tool compare_movies(movie_ids_json)` — builds `ComparisonTable` with DB fields for all rows; enriched fields null and noted for rows outside the sample.
+- [x] `@tool predict_user_rating(user_id, movie_id)` — **excludes target from user history** (fixed ground-truth leak caught during evaluation). Joined w/ enrichment when available; LLM returns rating + rationale.
+- [x] `@tool summarize_user_preferences(user_id)` — full rating history, top/bottom rated, enriched overlap where present.
+- [x] Docstrings are thorough — they're the LLM's tool reference.
 
 ### Agent
 
-- [ ] `src/agent.py`: `Agent(model=BedrockModel(model_id="us.anthropic.claude-haiku-4-5-20251001-v1:0", region_name="us-east-1"), tools=[...], system_prompt=...)` — Claude Haiku (Strands-native, see PLAN.md decision)
-- [ ] System prompt in `src/prompts/agent_system.py` — movie-assistant persona, tool-selection guidance
+- [x] `src/agent.py`: `build_agent()` factory returns `Agent` over `BedrockModel("us.anthropic.claude-haiku-4-5-20251001-v1:0", region_name="us-east-1")` with all 5 tools.
+- [x] System prompt in `src/prompts/agent_system.py` — persona, tool-selection rules, "enriched sample is only 75 movies" guard, 3 few-shot rating-prediction examples, response-formatting guidance (titles, why-this-fits, markdown tables).
 
 ### Notebook demos — 8 concrete prompts + illustrative predictions, across all 5 capabilities
 
-For each: render the tool-call trace + final structured answer inline. Prompts are pre-chosen so we don't invent them under time pressure.
+All 8 ran end-to-end, rendered tool-call traces + final answers inline.
 
 **Recommend (2)**
 
-- [ ] `"Recommend action movies with high revenue and positive sentiment"` _(README example)_
-- [ ] `"Find a dark comedy with a small budget that made money"` _(custom — exercises tier reasoning)_
+- [x] `"Recommend action movies with high revenue and positive sentiment"` — agent honestly flagged the 75-movie enrichment constraint (returned 1 match)
+- [x] `"Find a dark comedy with a small budget that made money"` — 4 results with tier-reasoning rationale
 
 **Summarize user preferences (1)**
 
-- [ ] `"Summarize preferences for user 42 based on their ratings and movie overviews"` _(README example)_
+- [x] `"Summarize preferences for user 42 based on their ratings and movie overviews"` — paragraph summary with specific movie references (*Monsoon Wedding*, *Die Hard 2*)
 
 **Compare (2)**
 
-- [ ] `"How does The Godfather compare to Goodfellas?"` _(named titles — exercises movie-id lookup)_
-- [ ] `"Compare the 3 highest-grossing 1990s dramas by runtime and effectiveness score"` _(chained query → compare)_
+- [x] `"How does The Godfather compare to Goodfellas?"` — 6-tool-call trace (agent iterated through compare/enriched lookups), final answer correct and noted both films are outside the enriched sample
+- [x] `"Compare the 3 highest-grossing 1990s dramas by runtime and effectiveness score"` — clean query → 3× enriched-lookup pattern; honestly reported the three blockbusters aren't in the enriched sample
 
 **NL query (2)**
 
-- [ ] `"What were the highest-grossing dramas of the 90s?"`
-- [ ] `"Show me movies with effectiveness score ≥ 8 and budget under $10M"`
+- [x] `"What were the highest-grossing dramas of the 90s?"` — single query_movies call, top-10 markdown table
+- [x] `"Show me movies with effectiveness score ≥ 8 and budget under $10M"` — 10 well-chosen results including *Jaws*, *Reservoir Dogs*, *Insidious*
 
-**Predict (1 trace + 5–10 illustrative examples)**
+**Predict (1 trace + 5 illustrative examples)**
 
-- [ ] `"Will user 42 like movie 550?"` _(sample trace)_
-- [ ] Pick 5–10 (user, movie) pairs where both ends have enough context (user ≥20 ratings, movie ≥3 ratings), invoke via agent, render a table with predicted rating / actual rating / delta / one-line rationale. Skip the MAE — per-movie rating counts are too sparse to defend a number (Phase 1 finding: _The Godfather_ has 5 total ratings). Write an honest-limitations markdown cell explaining why we're showing examples instead of an aggregate metric.
+- [x] `"Will user 42 like movie 550?"` — predicted 3.75 for *Fight Club*, specific rationale referring to user's drama preference
+- [x] 5 (user, movie) pairs table: 2 exact hits, avg |delta| ≈ 1.0. **Leak caught and fixed during eval**: `predict_user_rating` was pulling user's recent ratings *including* the target movie for rows where the user had already seen it. Added `movieId != ?` to the history query. Noted in findings.
 
 ### If rollback taken
 
