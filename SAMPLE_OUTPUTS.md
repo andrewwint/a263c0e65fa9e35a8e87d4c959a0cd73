@@ -6,9 +6,11 @@ All outputs below are real runs of the Strands agent over `us.anthropic.claude-h
 
 - **Task 1 enrichment** (75 movies, `openai.gpt-oss-20b-1:0`): see the notebook's §2 for prompt + dry-run + consistency check + cost summary (~$0.0064).
 
-- **Task 2 agent** (demos below): five tools — `query_movies`, `get_enriched_movie`, `compare_movies`, `predict_user_rating`, `summarize_user_preferences`. See [`src/tools.py`](src/tools.py) and [`src/prompts/agent_system.py`](src/prompts/agent_system.py).
+- **Task 2 agent** (demos below): five tools — `query_movies`, `get_enriched_movie`, `compare_movies`, `predict_user_rating`, `summarize_user_preferences`. See [`src/tools.py`](src/tools.py) for tool implementations and [`src/prompts/agent_system.py`](src/prompts/agent_system.py) for the system prompt + tool-selection rules + 3 few-shot prediction examples that calibrate the rating predictor.
 
 - **Honest limitations** are called out inline below and rolled up in the notebook's §4.4.
+
+> **Reproducibility note.** Even at `temperature=0`, the agent's final *rendered* answer can vary across re-runs (the tool output is stable; the Claude Haiku summary wrapper picks slightly different phrasings, truncates different details, or — on rare runs — substitutes a culturally famous title for a less-famous matching row). The version below was captured from one end-to-end clean-kernel run. A reviewer running fresh will see ~the same tool-call sequence and the same top-row titles; the prose around them may differ.
 
 ---
 
@@ -23,6 +25,7 @@ All outputs below are real runs of the Strands agent over `us.anthropic.claude-h
 7. [Show me movies with effectiveness score >= 8 and budget under $10M](#7-show-me-movies-with-effectiveness-score-8-and-budget-under-10m)
 8. [Will user 42 like movie 550?](#8-will-user-42-like-movie-550)
 9. [Rating-prediction examples (5 pairs)](#9-rating-prediction-examples-5-pairs)
+10. [Prompting techniques (what the LLM actually sees)](#10-prompting-techniques-what-the-llm-actually-sees)
 
 ## 1. Recommend action movies with high revenue and positive sentiment
 
@@ -227,24 +230,102 @@ Here are **movies with effectiveness score ≥ 8 and budget under $10M**:
 
 5 (user, movie) pairs where the user has ≥20 other ratings AND the movie is in the 75-movie enriched sample — so we have both prompt context and ground-truth.
 
-**Not an MAE.** n=5 is anecdote, not a metric. The framing is "does the tool produce sensible predictions with specific rationales?"
+**Not an MAE.** n=5 is anecdote, not a metric. The framing is *"does the tool produce sensible predictions with specific rationales?"*
 
 **Result:** 2 exact hits, 3 within 1.0, 5 within 2.5. Mean |delta| ≈ 1.0.
 
-```
-user                                     movie  predicted  actual  delta  \
-0    15                       The Next Best Thing        2.0     2.0    0.0   
-1    15                    Mere Brother Ki Dulhan        1.5     0.5    1.0   
-2     2                            Reservoir Dogs        2.5     4.0    1.5   
-3    85                              Transamerica        3.5     1.0    2.5   
-4    15  Star Wars: Episode III - Revenge of the         2.5     2.5    0.0   
+> **Eval note (per AGENTS.md Evaluation hygiene).** An earlier iteration of `predict_user_rating` pulled the user's 10 most recent ratings *including* the target movie. For any pair where the user had already rated the target, the LLM saw ground truth in its own prompt and echoed it — inflating accuracy. Fixed before these numbers were recorded: `AND rt.movieId != ?` in the history query. A unit test (`test_predict_user_rating_no_ground_truth_leak` in `tests/test_tools.py`) now guards against regression.
 
-                                                                         rationale  
-0  User 15's mean rating is 2.15, and while they show modest tolerance for come...  
-1  User 15 shows strong aversion to Romance-heavy films (0.5 for À nos amours, ...  
-2  User 2 shows strong aversion to crime-thriller violence (True Romance: 1.0) ...  
-3  User 85 shows mixed engagement with drama (ratings 1.0–5.0), with a slight p...  
-4  User 15 shows moderate engagement with action-heavy films (Taxi 3: 3.0, The ...
+| user | movie | predicted | actual | delta |
+|---:|---|---:|---:|---:|
+| 15 | The Next Best Thing | **2.0** | **2.0** | **0.0** |
+| 15 | Mere Brother Ki Dulhan | 1.5 | 0.5 | 1.0 |
+| 2  | Reservoir Dogs | 2.5 | 4.0 | 1.5 |
+| 85 | Transamerica | 3.5 | 1.0 | 2.5 |
+| 15 | Star Wars: Episode III — Revenge of the Sith | **2.5** | **2.5** | **0.0** |
+
+**Full rationales for the two exact-hit rows** (strongest evidence the tool reads the user's history and makes use of it rather than regressing to a generic mean):
+
+> **User 15 → *The Next Best Thing* (predicted 2.0, actual 2.0):**
+> User 15's mean rating is 2.15, and while they show modest tolerance for comedy (3.0 on *Taxi 3* and *Murder by Death*), *The Next Best Thing*'s drama-heavy tone, emotional custody battle themes, and romance subplot align poorly with their pattern of rating character-driven dramas very low (0.5–2.0), suggesting regression to their baseline with slight downward adjustment for the dramatic weight.
+
+> **User 15 → *Star Wars: Episode III — Revenge of the Sith* (predicted 2.5, actual 2.5):**
+> User 15 shows moderate engagement with action-heavy films (*Taxi 3*: 3.0, *The Wild Geese*: 3.5) but consistently rates drama-forward narratives poorly (0.5–2.0), and *Revenge of the Sith*'s heavy dramatic arc centered on a hero's fall and political intrigue aligns more with the latter pattern; the high-budget spectacle and action elements provide modest upside, but the dark, character-driven story pulls the prediction toward the user's mean (2.1) rather than their action-thriller ceiling.
+
+Both rationales reference specific films from the user's history by title and rating — the LLM is reading the history, not fabricating. See the notebook's §3.9 for all 5 rationales.
+
+---
+
+## 10. Prompting techniques (what the LLM actually sees)
+
+The challenge asks to "demonstrate prompting techniques." Three distinct prompt surfaces drive this system — each lives in its own file:
+
+### Task 1 enrichment — structured extraction with genre-relative reasoning
+
+[`src/prompts/enrich.py`](src/prompts/enrich.py). Key technique: the system prompt asks the model to reason about budget/revenue tiers **relative to genre norms** with concrete examples, and it uses good/bad exemplars to steer the `themes` field away from generic labels:
+
+```text
+- `budget_tier` and `revenue_tier`: judge relative to norms within the genre,
+  not absolute dollars. A $50M budget is "high" for a romance,
+  "medium" for a sci-fi tentpole...
+
+- `themes`: 3 to 5 specific, searchable thematic keywords.
+  Good: "redemption", "heist", "cold-war paranoia", "coming-of-age", "sibling rivalry"
+  Bad:  "drama", "exciting", "story", "action-packed"
 ```
 
-See the notebook's §3.9 for the rendered DataFrame with full rationales.
+See the notebook's §2.1 for the prompt rendered against a real movie, and §2.7 for the measured consistency result (categorical fields 97.5% stable at temp=0, themes show ~50% synonym drift per the 10×2 check).
+
+### Task 2 agent — tool-selection rules + few-shot rating calibration
+
+[`src/prompts/agent_system.py`](src/prompts/agent_system.py). Key techniques: explicit tool-selection rules + 3 worked rating-prediction examples that calibrate regression-to-mean behavior so the model doesn't fabricate confident ratings from sparse evidence. Excerpt:
+
+```text
+TOOL SELECTION:
+- "recommend X" / "find me X" → query_movies with a JSON QueryFilter.
+- "compare A and B" / "A vs B" → query_movies by title to get IDs, then compare_movies.
+- "highest-grossing dramas of the 90s" → query_movies with
+  min_year=1990, max_year=1999, genres=["Drama"], sort_by="revenue_desc".
+...
+
+RATING-PREDICTION FEW-SHOT:
+
+Example A
+  User history: 5 × heist/crime films rated 4.0–5.0; almost never watches romance.
+  Target: a new crime drama, positive sentiment, effectiveness_score 8.
+  Predicted: 4.5 — "matches documented crime preference and high-quality enrichment signal"
+
+Example B
+  User history: 2.0–3.0 ratings on comedies; 5.0 ratings on psychological thrillers.
+  Target: a lighthearted romantic comedy.
+  Predicted: 2.5 — "user consistently rates comedies low; genre mismatch with thriller preference"
+
+Example C (regression-to-mean calibration)
+  User history: broad, 2.5–4.0 across many genres, mean ≈ 3.4; no dominant pattern.
+  Target: an average-effectiveness drama (score 5, neutral sentiment).
+  Predicted: 3.5 — "regresses to this user's mean; no specific signal to push higher or lower"
+```
+
+### Task 2 tools — docstrings as the LLM-facing contract
+
+[`src/tools.py`](src/tools.py). Each `@tool` function's docstring is the prompt the agent sees for that capability. Key technique: the filter schema for `query_movies` is documented inline in the docstring as a typed JSON shape, so the LLM emits valid JSON that `QueryFilter.model_validate_json()` accepts without the LLM ever writing raw SQL. Excerpt from `query_movies`:
+
+```text
+filter_json must be a JSON string matching QueryFilter:
+  {
+    "genres": ["Action", "Drama"],
+    "budget_tier": "low" | "medium" | "high" | null,
+    "revenue_tier": "low" | "medium" | "high" | null,
+    "sentiment": "positive" | "negative" | "neutral" | null,
+    "min_score": 1-10 or null,
+    "min_year": int or null,
+    ...
+    "limit": int 1-50, default 10
+  }
+```
+
+### Why this split
+
+- **Task 1** is deterministic extraction — one prompt, one schema, no agent. Direct-invoke loop with JSON validation + retry.
+- **Task 2** is agentic — the LLM chooses which tool to call. Docstrings carry the per-tool contract; the system prompt carries global routing rules + calibration examples.
+- **Tools never let the LLM write SQL.** Filter specs are typed JSON → Pydantic-validated → translated to parameterized SQL server-side.
