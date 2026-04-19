@@ -29,8 +29,11 @@ logger = logging.getLogger(__name__)
 AGENT_MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 # Columns the enriched parquet is expected to carry.
+# Note: `title` is intentionally excluded — movies.db is the source of truth
+# for titles, and including it here would cause pandas to rename to
+# title_x/title_y on merge, silently dropping the field from output.
 _ENRICHED_COLS = [
-    "movieId", "title", "overview_sentiment", "budget_tier", "revenue_tier",
+    "movieId", "overview_sentiment", "budget_tier", "revenue_tier",
     "production_effectiveness_score", "themes",
 ]
 
@@ -76,31 +79,29 @@ def query_movies(filter_json: str) -> str:
     budget, revenue, runtime, and enriched attrs when available.
     """
     qf = QueryFilter.model_validate_json(filter_json)
+    df = _fetch_candidates(qf)
+    df = _apply_post_filters(df, qf)
+    df = _sort_and_limit(df, qf)
+    return _format_results(df)
 
+
+def _fetch_candidates(qf: QueryFilter) -> pd.DataFrame:
+    """Run the parameterized SQL — only covers DB-native fields."""
     where: list[str] = ["status = 'Released'"]
     params: list[Any] = []
 
-    # Genre matching happens in pandas via parse_json_names — the `genres`
-    # column is TMDB JSON and the previous LIKE pattern was fragile to
-    # whitespace and LIKE wildcards embedded in the column value.
-    if qf.min_year is not None:
-        where.append("CAST(substr(releaseDate, 1, 4) AS INTEGER) >= ?")
-        params.append(qf.min_year)
-    if qf.max_year is not None:
-        where.append("CAST(substr(releaseDate, 1, 4) AS INTEGER) <= ?")
-        params.append(qf.max_year)
-    if qf.min_budget is not None:
-        where.append("budget >= ?")
-        params.append(qf.min_budget)
-    if qf.max_budget is not None:
-        where.append("budget <= ?")
-        params.append(qf.max_budget)
-    if qf.min_runtime is not None:
-        where.append("runtime >= ?")
-        params.append(qf.min_runtime)
-    if qf.max_runtime is not None:
-        where.append("runtime <= ?")
-        params.append(qf.max_runtime)
+    year_budget_runtime = [
+        ("min_year", "CAST(substr(releaseDate, 1, 4) AS INTEGER) >= ?", qf.min_year),
+        ("max_year", "CAST(substr(releaseDate, 1, 4) AS INTEGER) <= ?", qf.max_year),
+        ("min_budget", "budget >= ?", qf.min_budget),
+        ("max_budget", "budget <= ?", qf.max_budget),
+        ("min_runtime", "runtime >= ?", qf.min_runtime),
+        ("max_runtime", "runtime <= ?", qf.max_runtime),
+    ]
+    for _, clause, value in year_budget_runtime:
+        if value is not None:
+            where.append(clause)
+            params.append(value)
 
     sql = f"""
         SELECT movieId, title, budget, revenue, runtime, genres, releaseDate
@@ -108,53 +109,67 @@ def query_movies(filter_json: str) -> str:
         WHERE {' AND '.join(where)}
     """
     with db.connect() as conn:
-        df = pd.read_sql_query(sql, conn, params=params)
+        return pd.read_sql_query(sql, conn, params=params)
 
-    # Post-SQL filters (all operate on in-memory DataFrame)
+
+def _apply_post_filters(df: pd.DataFrame, qf: QueryFilter) -> pd.DataFrame:
+    """Filter in pandas. Genre matching + enrichment join + enrichment filters.
+
+    Done in pandas (not SQL) because the `genres` column is TMDB JSON and
+    LIKE patterns against it are fragile. The enriched parquet is also the
+    natural shape to merge on.
+    """
     if qf.genres:
-        genre_set = {g.lower() for g in qf.genres}
-        df["_primary_genres"] = df["genres"].apply(
+        wanted = {g.lower() for g in qf.genres}
+        df["_genres"] = df["genres"].apply(
             lambda raw: {n.lower() for n in enrich.parse_json_names(raw)}
         )
-        df = df[df["_primary_genres"].apply(lambda names: bool(genre_set & names))]
-        df = df.drop(columns=["_primary_genres"])
+        df = df[df["_genres"].apply(lambda names: bool(wanted & names))]
+        df = df.drop(columns=["_genres"])
 
     needs_enriched = any(
         v is not None for v in (qf.budget_tier, qf.revenue_tier, qf.sentiment, qf.min_score)
     )
-    merged = df.merge(_enriched(), on="movieId", how="inner" if needs_enriched else "left")
+    df = df.merge(_enriched(), on="movieId", how="inner" if needs_enriched else "left")
 
     if qf.budget_tier:
-        merged = merged[merged["budget_tier"] == qf.budget_tier]
+        df = df[df["budget_tier"] == qf.budget_tier]
     if qf.revenue_tier:
-        merged = merged[merged["revenue_tier"] == qf.revenue_tier]
+        df = df[df["revenue_tier"] == qf.revenue_tier]
     if qf.sentiment:
-        merged = merged[merged["overview_sentiment"] == qf.sentiment]
+        df = df[df["overview_sentiment"] == qf.sentiment]
     if qf.min_score is not None:
-        merged = merged[merged["production_effectiveness_score"] >= qf.min_score]
+        df = df[df["production_effectiveness_score"] >= qf.min_score]
+    return df
 
-    sort_map = {
-        "revenue_desc": ("revenue", False),
-        "budget_desc": ("budget", False),
-        "score_desc": ("production_effectiveness_score", False),
-        "runtime_desc": ("runtime", False),
-        "rating_desc": ("production_effectiveness_score", False),
-    }
-    if qf.sort_by and qf.sort_by in sort_map:
-        col, asc = sort_map[qf.sort_by]
-        merged = merged.sort_values(col, ascending=asc, na_position="last")
 
-    merged = merged.head(qf.limit)
-    merged["release_year"] = merged["releaseDate"].apply(_year)
+_SORT_MAP = {
+    "revenue_desc": "revenue",
+    "budget_desc": "budget",
+    "score_desc": "production_effectiveness_score",
+    "runtime_desc": "runtime",
+    "rating_desc": "production_effectiveness_score",
+}
 
-    out_cols = [
-        "movieId", "title", "release_year", "budget", "revenue", "runtime",
-        "overview_sentiment", "budget_tier", "revenue_tier",
-        "production_effectiveness_score", "themes",
-    ]
-    present_cols = [c for c in out_cols if c in merged.columns]
-    result = merged[present_cols].where(pd.notna(merged[present_cols]), None)
-    return result.to_json(orient="records")
+
+def _sort_and_limit(df: pd.DataFrame, qf: QueryFilter) -> pd.DataFrame:
+    if qf.sort_by and qf.sort_by in _SORT_MAP:
+        df = df.sort_values(_SORT_MAP[qf.sort_by], ascending=False, na_position="last")
+    return df.head(qf.limit)
+
+
+_OUT_COLS = [
+    "movieId", "title", "release_year", "budget", "revenue", "runtime",
+    "overview_sentiment", "budget_tier", "revenue_tier",
+    "production_effectiveness_score", "themes",
+]
+
+
+def _format_results(df: pd.DataFrame) -> str:
+    df = df.copy()
+    df["release_year"] = df["releaseDate"].apply(_year) if "releaseDate" in df else None
+    present = [c for c in _OUT_COLS if c in df.columns]
+    return df[present].where(pd.notna(df[present]), None).to_json(orient="records")
 
 
 @tool
