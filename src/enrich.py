@@ -117,17 +117,16 @@ def enrich_one(
     movie: dict[str, Any],
     model_id: str = ENRICH_MODEL,
     temperature: float = 0.0,
-) -> tuple[EnrichedAttributes, int, int, str]:
-    """Return (attributes, input_tokens, output_tokens, rendered_prompt)."""
+) -> llm.InvokeResult[EnrichedAttributes]:
+    """Enrich a single movie. Returns the InvokeResult with .value, .input_tokens, .output_tokens."""
     user_prompt = _build_user_prompt(movie)
-    result = llm.invoke(
+    return llm.invoke(
         prompt=user_prompt,
         schema=EnrichedAttributes,
         model_id=model_id,
         system=SYSTEM,
         temperature=temperature,
     )
-    return result.value, result.input_tokens, result.output_tokens, user_prompt
 
 
 def enrich_all(
@@ -138,6 +137,11 @@ def enrich_all(
     """Run enrichment for all `movies`, merging with any cached rows.
 
     Cache is keyed on movieId. Rerunning with the same sample is free.
+
+    Cache schema is not versioned: if `EnrichedAttributes` gains fields,
+    cached rows from an earlier schema will merge in without the new fields.
+    For a take-home this is fine — delete `data/enriched_movies.parquet`
+    on schema change to force a fresh run.
     """
     cache_path = Path(cache_path)
 
@@ -158,15 +162,15 @@ def enrich_all(
             continue
 
         try:
-            attrs, in_t, out_t, _ = enrich_one(row.to_dict(), model_id=model_id)
-            total_in += in_t
-            total_out += out_t
+            r = enrich_one(row.to_dict(), model_id=model_id)
+            total_in += r.input_tokens
+            total_out += r.output_tokens
             out_rows.append({
                 "movieId": mid,
                 "title": row["title"],
-                **attrs.model_dump(),
-                "input_tokens": in_t,
-                "output_tokens": out_t,
+                **r.value.model_dump(),
+                "input_tokens": r.input_tokens,
+                "output_tokens": r.output_tokens,
                 "model": model_id,
             })
         except Exception as e:

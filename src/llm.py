@@ -41,14 +41,13 @@ class InvokeResult(Generic[T]):
     model_id: str
 
 
-_client: Any = None
+_clients: dict[str, Any] = {}
 
 
 def _get_client(region: str):
-    global _client
-    if _client is None:
-        _client = boto3.client("bedrock-runtime", region_name=region)
-    return _client
+    if region not in _clients:
+        _clients[region] = boto3.client("bedrock-runtime", region_name=region)
+    return _clients[region]
 
 
 def _extract_text(response: dict) -> str:
