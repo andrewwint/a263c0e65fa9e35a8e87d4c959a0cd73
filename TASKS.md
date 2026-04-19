@@ -105,11 +105,11 @@ All 8 ran end-to-end, rendered tool-call traces + final answers inline.
 - [x] `"Will user 42 like movie 550?"` — predicted 3.75 for *Fight Club*, specific rationale referring to user's drama preference
 - [x] 5 (user, movie) pairs table: 2 exact hits, avg |delta| ≈ 1.0. **Leak caught and fixed during eval**: `predict_user_rating` was pulling user's recent ratings *including* the target movie for rows where the user had already seen it. Added `movieId != ?` to the history query. Noted in findings.
 
-### If rollback taken
+### ~~If rollback taken~~ — not needed; spike passed
 
-- [ ] Implement `src/recommend.py`, `src/predict.py`, `src/query.py` with direct `llm.invoke`
-- [ ] Add a `compare` function inside `query.py` — text output, no structured table
-- [ ] Document the rollback decision in README with one paragraph of reasoning
+- [~] ~~Implement `src/recommend.py`, `src/predict.py`, `src/query.py` with direct `llm.invoke`~~
+- [~] ~~Add a `compare` function inside `query.py` — text output, no structured table~~
+- [~] ~~Document the rollback decision in README with one paragraph of reasoning~~
 
 ## Phase 4 — Notebook polish & findings
 
@@ -142,19 +142,57 @@ All 8 ran end-to-end, rendered tool-call traces + final answers inline.
 - [x] Added `db/.gitkeep` and `data/.gitkeep` so those directories exist on fresh clone.
 - [x] **Ready to send repo link.**
 
-## Stretch (only if time allows)
+## ~~Stretch~~ — not done; scope + time discipline
 
-### Lambda deploy (bonus — demonstrates AWS integration without a second language)
+### ~~Lambda deploy~~ — deferred to "what I'd do with more time"
 
-- [ ] Create Lambda function in AWS console (Python 3.11, 512 MB, 30s timeout)
-- [ ] Attach IAM role with `bedrock:InvokeModel` on the three model IDs
-- [ ] Package: `zip -r lambda.zip src/llm.py src/agent.py src/tools.py src/schemas.py src/prompts/` + Pydantic/Strands layer (or bundled)
-- [ ] Upload via `aws lambda update-function-code`
-- [ ] Test invoke with a sample `{"prompt": "...", "capability": "recommend"}` payload
-- [ ] Document the deploy steps + invoke URL/CLI command in README
+- [~] ~~Create Lambda function in AWS console (Python 3.11, 512 MB, 30s timeout)~~
+- [~] ~~Attach IAM role with `bedrock:InvokeModel` on the three model IDs~~
+- [~] ~~Package: `zip -r lambda.zip src/llm.py src/agent.py src/tools.py src/schemas.py src/prompts/` + Pydantic/Strands layer (or bundled)~~
+- [~] ~~Upload via `aws lambda update-function-code`~~
+- [~] ~~Test invoke with a sample `{"prompt": "...", "capability": "recommend"}` payload~~
+- [~] ~~Document the deploy steps + invoke URL/CLI command in README~~
 
-### Other
+The code is Lambda-ready by design (`src/llm.py` + `src/agent.py` use boto3 default credentials, no secrets in env) — packaging + IAM setup is the only remaining work. Documented in notebook §4.5.
 
-- [ ] Simple embedding-based similarity for themes (Bedrock Titan or Cohere embed)
-- [ ] `rich` CLI output
-- [ ] Dockerfile
+### ~~Other~~ — deferred
+
+- [~] ~~Simple embedding-based similarity for themes (Bedrock Titan or Cohere embed)~~ — would replace string-match `themes` filter with cosine similarity. Notebook §4.5 item.
+- [~] ~~`rich` CLI output~~ — the Strands agent response + notebook rendering are the primary surfaces. A CLI adds no signal a reviewer needs.
+- [~] ~~Dockerfile~~ — `requirements.txt` + `aws configure` is the documented path. Docker adds a layer without improving the reviewer experience.
+
+---
+
+## Findings & Learnings
+
+Process-level lessons from this project. The subject-matter findings (enrichment consistency, rating-prediction accuracy, cost) live in the notebook §4.4. What follows is about **how the work went**, not what it produced.
+
+### What worked
+
+- **Plan-then-build.** PLAN.md / TASKS.md / AGENTS.md committed as the initial commit (`31da6d4`), before any code. Gave reviews (mine, Q's, user's) a shared document to push on, and made mid-project revisions explicit (model swap, Haiku version, schema docs) — the plan was a contract, not prose.
+- **45-minute Strands spike with a pre-committed rollback.** Paid off in confidence even though we didn't use the rollback (spike passed in 2.9s). The discipline of naming the fallback up front meant there was no "should we abandon?" debate mid-integration.
+- **Library-first, notebook-second.** Every phase built functions in `src/` first, then drove them from notebook cells. Avoided the classic notebook anti-pattern where logic lives in cells and becomes untestable. All 44 tests target `src/` modules.
+- **Layered review caught different classes of bugs.** See AGENTS.md's Review loop section for the full list. Scanners caught complexity + path-traversal flags; code review caught the title-merge bug, dead code, prompt duplication; runtime eval caught the ground-truth leak; infra caught the expired SSO token. No layer saw everything. Running all three matters.
+- **Honest framing beat statistical theater.** Reframing "MAE on 20 holdout ratings" to "5 illustrative prediction examples with rationales" was uncomfortable — it feels like downgrading. It was the correct call, because per-movie rating sparsity made an MAE unscientifically noisy. Reviewers respect measured claims over overclaimed numbers.
+- **Fresh-clone smoke test.** Revealed two things local development hid: `db/` and `data/` directories don't exist on clone (fixed with `.gitkeep`), and the enriched parquet was gitignored (fixed with `!` negation + explicit commit). "It runs on my machine" isn't submission-ready.
+
+### What went wrong (and what I'd catch sooner next time)
+
+- **Ground-truth leak in `predict_user_rating`.** Classic recsys pattern (history pull didn't exclude the target). Caught at eval time, not review time. Added a regression test (`test_predict_user_rating_no_ground_truth_leak`) that FAILS when the fix is reverted. The lesson is in AGENTS.md Evaluation hygiene: **before writing eval code, enumerate the leak paths**.
+- **`title_x` / `title_y` merge bug.** The enriched parquet had a `title` column that collided with `movies.db`'s `title` during merge; pandas silently renamed to `title_x` / `title_y` and the output filter looked for plain `title`, so the field was dropped from the JSON tool output. The agent compensated by inferring titles from `title_x` leakage — undetectable from the rendered output. Found only during the refactor smoke-test. Lesson: **the first direct call to a tool outside the agent loop is also a review moment**.
+- **"Fully deterministic at temp=0" was wrong.** Initial consistency claim was based on 3 movies × 2 runs — anecdote. Q pushed for 10 × 2; actual measurement showed categorical fields 97.5% stable, themes ~50% synonym-drift. Exact numbers beat vibes.
+- **Stale model IDs.** Went through three rounds of model decisions before settling. `openai.gpt-oss-120b` was in PLAN.md for Phase 2 — dropped during Strands SDK research (Strands is Claude-native). `claude-3-5-haiku` replaced it — then AWS legacy-locked 3.5 and required a switch to Haiku 4.5 mid-setup. Bedrock model IDs are not stable across a single take-home cycle.
+- **SSO sessions expire mid-run.** 12-hour default. Hit this twice during development, once mid-notebook-execution. For a reviewer running fresh, the README + notebook-prereqs now flag the re-auth step.
+
+### Scope calls that saved time
+
+- **No `pyproject.toml`** — optional, added no functional gain on a 2–3h budget.
+- **No agent framework for Task 1** — `src/llm.py` is 120 lines of direct `bedrock-runtime.converse` + JSON parse + retry. Using Strands here would have been ceremony, not substance.
+- **No unit tests for the agent, only the tools.** Agent behavior varies across runs (LLM non-determinism); tool contracts don't. Tests target what's stable.
+- **No CLI / Dockerfile / Lambda deploy** — the deliverable surface is the notebook + SAMPLE_OUTPUTS + tests. Anything else was for a longer-horizon project.
+
+### Useful meta-patterns
+
+- **Strikethrough-as-record.** Using `[~] ~~...~~` instead of deleting tasks that were planned but not done (or turned out unnecessary). Preserves the decision trail — a reviewer can see *what we considered and explicitly declined*, not just what we shipped.
+- **Findings sections get rewritten as measurements replace estimates.** Phase 2 findings went through three revisions: "zero drift" (unmeasured claim) → "partial determinism" (vague) → "1/40 categorical, 5/10 theme" (measured). Each rewrite was triggered by a review that asked "how do you know?"
+- **Commit messages carry the reasoning, not just the diff.** When a fix commit explains *why* the original approach was wrong and *what a future review should catch earlier*, the git log becomes the retrospective.
